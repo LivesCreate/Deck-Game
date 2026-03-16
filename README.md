@@ -16,15 +16,7 @@ Abstract minimalist trading card game built with React.
 * Dark mode UI
 * PWA with offline support
 * Persistent save via localStorage
-
 ```
-index.html      — Main page (React CDN, require shim, mount)
-game.js         — Compiled game code (pre-compiled JSX)
-sw.js           — Service worker for offline caching
-manifest.json   — PWA manifest
-version.txt     — Current version
-icon-192.png    — App icon 192x192
-icon-512.png    — App icon 512x512
 ```
 ## Tech Stack
 
