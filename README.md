@@ -26,14 +26,6 @@ version.txt     — Current version
 icon-192.png    — App icon 192x192
 icon-512.png    — App icon 512x512
 ```
-
-### Version Bumping
-
-When updating, bump the version in:
-
-1. `sw.js` → `CACHE\_NAME`
-2. `version.txt`
-
 ## Tech Stack
 
 * React 18 (CDN)
