@@ -17,6 +17,7 @@ Abstract minimalist trading card game built with React.
 * PWA with offline support
 * Persistent save via localStorage
 ```
+```
 ## Tech Stack
 
 * React 18 (CDN)
