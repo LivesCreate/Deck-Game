@@ -29,7 +29,7 @@ var CardGameModule = (() => {
     default: () => CardGame
   });
   var import_react = __require("react");
-  var VERSION = "2.0.0";
+  var VERSION = "2.1.0";
   var FIREBASE_CONFIG = {
     apiKey: "AIzaSyBEgpJaRGN-Q8EnsZ-gwXUz7ySQJpBz0mw",
     authDomain: "deck-d04c7.firebaseapp.com",
@@ -225,6 +225,34 @@ var CardGameModule = (() => {
       } catch (e) {
       }
     }, [game]);
+    (0, import_react.useEffect)(() => {
+      const handlePop = () => {
+        if (authScreen) {
+          setAuthScreen(null);
+          return;
+        }
+        if (screen === "battle" && battle) {
+          setBattle(null);
+          setScreen("home");
+          return;
+        }
+        if (screen === "deckbuilder") {
+          setScreen("decks");
+          return;
+        }
+        if (screen !== "home") {
+          setScreen("home");
+          return;
+        }
+      };
+      window.addEventListener("popstate", handlePop);
+      return () => window.removeEventListener("popstate", handlePop);
+    }, [screen, authScreen, battle]);
+    (0, import_react.useEffect)(() => {
+      if (screen !== "home" || authScreen) {
+        window.history.pushState({ screen, authScreen }, "");
+      }
+    }, [screen, authScreen]);
     const toast = (0, import_react.useCallback)((msg, type = "info") => {
       const id = ++toastId;
       setToasts((t) => [...t, { id, msg, type }]);
@@ -355,7 +383,97 @@ var CardGameModule = (() => {
       const auth = getAuth();
       if (auth) await auth.signOut();
       toast("Logged out.", "info");
+      setScreen("home");
     }, [toast]);
+    const handleGoogleLogin = (0, import_react.useCallback)(async () => {
+      const auth = getAuth();
+      const db = getDb();
+      if (!auth || !db) {
+        setAuthError("Firebase not loaded.");
+        return;
+      }
+      setAuthLoading(true);
+      setAuthError("");
+      try {
+        const provider = new window.firebase.auth.GoogleAuthProvider();
+        const cred = await auth.signInWithPopup(provider);
+        const doc = await db.collection("users").doc(cred.user.uid).get();
+        if (!doc.exists) {
+          const uname = cred.user.displayName || "Player" + Math.floor(Math.random() * 9999);
+          await db.collection("users").doc(cred.user.uid).set({ username: uname, usernameLC: uname.toLowerCase(), gameState: game, createdAt: window.firebase.firestore.FieldValue.serverTimestamp() });
+        }
+        setAuthScreen(null);
+        toast("Logged in with Google!", "success");
+      } catch (e) {
+        setAuthError(e.message || "Google login failed.");
+      }
+      setAuthLoading(false);
+    }, [game, toast]);
+    const handleChangeUsername = (0, import_react.useCallback)(async (newName) => {
+      const db = getDb();
+      if (!db || !user) return;
+      if (newName.length < 3 || newName.length > 16) {
+        toast("Username 3-16 chars.", "error");
+        return;
+      }
+      if (!/^[a-zA-Z0-9_]+$/.test(newName)) {
+        toast("Letters, numbers, underscores only.", "error");
+        return;
+      }
+      try {
+        const ex = await db.collection("users").where("usernameLC", "==", newName.toLowerCase()).get();
+        if (!ex.empty) {
+          toast("Username taken.", "error");
+          return;
+        }
+        await db.collection("users").doc(user.uid).update({ username: newName, usernameLC: newName.toLowerCase() });
+        setUsername(newName);
+        toast("Username changed!", "success");
+      } catch (e) {
+        toast("Failed to change username.", "error");
+      }
+    }, [user, toast]);
+    const handleChangePassword = (0, import_react.useCallback)(async (newPass) => {
+      const auth = getAuth();
+      if (!auth || !user) return;
+      if (newPass.length < 6) {
+        toast("Password must be at least 6 characters.", "error");
+        return;
+      }
+      try {
+        await user.updatePassword(newPass);
+        toast("Password changed!", "success");
+      } catch (e) {
+        if (e.code === "auth/requires-recent-login") {
+          toast("Please log out and log back in first, then try again.", "error");
+        } else toast(e.message || "Failed.", "error");
+      }
+    }, [user, toast]);
+    const handleDeleteAccount = (0, import_react.useCallback)(async () => {
+      const auth = getAuth();
+      const db = getDb();
+      if (!auth || !db || !user) return;
+      try {
+        await db.collection("users").doc(user.uid).delete();
+        await user.delete();
+        toast("Account deleted.", "info");
+        setScreen("home");
+      } catch (e) {
+        if (e.code === "auth/requires-recent-login") {
+          toast("Please log out and log back in first, then try again.", "error");
+        } else toast(e.message || "Failed.", "error");
+      }
+    }, [user, toast]);
+    const handleResetPassword = (0, import_react.useCallback)(async () => {
+      const auth = getAuth();
+      if (!auth || !user?.email) return;
+      try {
+        await auth.sendPasswordResetEmail(user.email);
+        toast("Reset email sent!", "success");
+      } catch (e) {
+        toast("Failed.", "error");
+      }
+    }, [user, toast]);
     const searchUsers = (0, import_react.useCallback)(async () => {
       const db = getDb();
       if (!db || !searchQuery.trim()) return;
@@ -713,13 +831,13 @@ var CardGameModule = (() => {
       return /* @__PURE__ */ React.createElement("div", { style: S.miniCard(cardDef.rarity, selected), onClick, title: ab.desc || cardDef.name }, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 3, left: 5, fontSize: 9, color: "#378ADD", fontWeight: 600 } }, c.cost || cardDef.cost), battleCard?.shielded && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 2, right: 4, fontSize: 8, color: "#378ADD" } }, "\u25C8"), /* @__PURE__ */ React.createElement(ShapeIcon, { shape: cardDef.shape, color: r.color, size: 22 }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8, fontWeight: 500, textAlign: "center", lineHeight: 1.1, maxWidth: 56, overflow: "hidden" } }, cardDef.name), ab.id !== "none" && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 7, color: r.color, fontWeight: 500 } }, ab.name), showStats !== false && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", width: "100%", padding: "0 4px" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#EF9F27", fontWeight: 600 } }, battleCard ? c.currentAtk : cardDef.atk), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#E24B4A", fontWeight: 600 } }, battleCard ? c.currentHp : cardDef.hp)));
     };
     const Toasts = () => /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 999, display: "flex", flexDirection: "column", gap: 6, maxWidth: 380, width: "90%" } }, toasts.map((t) => /* @__PURE__ */ React.createElement("div", { key: t.id, style: { padding: "10px 16px", borderRadius: 10, fontSize: 13, fontWeight: 500, background: t.type === "error" ? "#E24B4A" : t.type === "success" ? "#1D9E75" : "#7F77DD", color: "#fff", animation: "slideDown .3s ease", boxShadow: "0 4px 12px rgba(0,0,0,.15)" } }, t.msg)));
-    const AuthScreenUI = () => /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "24px 0 8px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600, letterSpacing: 2 } }, "DECK"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777", marginTop: 2 } }, authScreen === "register" ? "Create Account" : "Log In")), authError && /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 12px", borderRadius: 8, background: "#501313", color: "#F09595", fontSize: 12 } }, authError), authScreen === "register" && /* @__PURE__ */ React.createElement("input", { style: S.input, placeholder: "Username", value: authUsername, onChange: (e) => setAuthUsername(e.target.value), maxLength: 16 }), /* @__PURE__ */ React.createElement("input", { style: S.input, placeholder: "Email", type: "email", value: authEmail, onChange: (e) => setAuthEmail(e.target.value) }), /* @__PURE__ */ React.createElement("input", { style: S.input, placeholder: "Password", type: "password", value: authPass, onChange: (e) => setAuthPass(e.target.value) }), /* @__PURE__ */ React.createElement("button", { style: S.btn("primary"), onClick: authScreen === "register" ? handleRegister : handleLogin, disabled: authLoading }, authLoading ? "Loading..." : authScreen === "register" ? "Create Account" : "Log In"), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontSize: 12, color: "#777" } }, authScreen === "register" ? /* @__PURE__ */ React.createElement("span", null, "Have an account? ", /* @__PURE__ */ React.createElement("span", { style: { color: "#AFA9EC", cursor: "pointer" }, onClick: () => {
+    const AuthScreenUI = () => /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "24px 0 8px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600, letterSpacing: 2 } }, "DECK"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777", marginTop: 2 } }, authScreen === "register" ? "Create Account" : "Log In")), authError && /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 12px", borderRadius: 8, background: "#501313", color: "#F09595", fontSize: 12 } }, authError), /* @__PURE__ */ React.createElement("input", { style: S.input, placeholder: "Email", type: "email", value: authEmail, onChange: (e) => setAuthEmail(e.target.value) }), authScreen === "register" && /* @__PURE__ */ React.createElement("input", { style: S.input, placeholder: "Username (3-16 characters)", value: authUsername, onChange: (e) => setAuthUsername(e.target.value) }), /* @__PURE__ */ React.createElement("input", { style: S.input, placeholder: "Password", type: "password", value: authPass, onChange: (e) => setAuthPass(e.target.value) }), /* @__PURE__ */ React.createElement("button", { style: S.btn("primary"), onClick: authScreen === "register" ? handleRegister : handleLogin, disabled: authLoading }, authLoading ? "Loading..." : authScreen === "register" ? "Create Account" : "Log In"), /* @__PURE__ */ React.createElement("button", { style: S.btn("success"), onClick: handleGoogleLogin }, "Sign in with Google"), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontSize: 12, color: "#777" } }, authScreen === "register" ? /* @__PURE__ */ React.createElement("span", null, "Have an account? ", /* @__PURE__ */ React.createElement("span", { style: { color: "#AFA9EC", cursor: "pointer" }, onClick: () => {
       setAuthScreen("login");
       setAuthError("");
     } }, "Log in")) : /* @__PURE__ */ React.createElement("span", null, "Need an account? ", /* @__PURE__ */ React.createElement("span", { style: { color: "#AFA9EC", cursor: "pointer" }, onClick: () => {
       setAuthScreen("register");
       setAuthError("");
-    } }, "Sign up"))), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), marginTop: 8 }, onClick: () => setAuthScreen(null) }, "Play Offline"));
+    } }, "Sign up"))), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), marginTop: 4 }, onClick: () => setAuthScreen(null) }, "Cancel"));
     const HomeScreen = () => {
       const wr = game.stats.totalGames > 0 ? Math.round(game.stats.wins / game.stats.totalGames * 100) : 0;
       const col = new Set(game.collection).size;
@@ -804,9 +922,28 @@ var CardGameModule = (() => {
         return /* @__PURE__ */ React.createElement("div", { key: u.uid, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "0.5px solid #333" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 500 } }, u.username), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, u.gameState?.stats?.wins || 0, "W \xB7 ", u.gameState?.stats?.losses || 0, "L")), isF ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#1D9E75" } }, "Friends") : /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), fontSize: 10, padding: "4px 10px" }, onClick: () => sendFriendRequest(u.uid, u.username) }, "Add"));
       })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 500, marginTop: 4 } }, "Friends (", friends.length, ")"), friends.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777", textAlign: "center", padding: 16 } }, "No friends yet") : friends.map((f) => /* @__PURE__ */ React.createElement("div", { key: f.id, style: { ...S.card, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 28, height: 28, borderRadius: "50%", background: "#26215C", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 600, color: "#AFA9EC" } }, f.username?.slice(0, 2).toUpperCase()), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 500 } }, f.username)), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), fontSize: 10, padding: "6px 12px" }, onClick: () => sendBattleRequest(f.id, f.username) }, "Battle"))));
     };
-    const navItems = [{ id: "home", label: "Home", icon: "\u25C9" }, { id: "packs", label: "Packs", icon: "\u25C6" }, { id: "collection", label: "Cards", icon: "\u25C7" }, { id: "decks", label: "Decks", icon: "\u2630" }, { id: "social", label: "Social", icon: "\u25CE" }];
+    const [settingsNewUsername, setSettingsNewUsername] = (0, import_react.useState)("");
+    const [settingsNewPassword, setSettingsNewPassword] = (0, import_react.useState)("");
+    const [deleteConfirm, setDeleteConfirm] = (0, import_react.useState)(false);
+    const SettingsScreen = () => {
+      if (!user) return /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "40px 0" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600, marginBottom: 8 } }, "Settings"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#777", marginBottom: 16 } }, "Log in to access account settings"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, justifyContent: "center" } }, /* @__PURE__ */ React.createElement("button", { style: S.btn("primary"), onClick: () => setAuthScreen("login") }, "Log In"), /* @__PURE__ */ React.createElement("button", { style: S.btn(), onClick: () => setAuthScreen("register") }, "Sign Up"))));
+      return /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600 } }, "Settings"), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "#AFA9EC", marginBottom: 8 } }, "Account Info"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777" } }, "Email"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, marginBottom: 8 } }, user.email || "Google account"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777" } }, "Username"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, marginBottom: 8 } }, username), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777" } }, "User ID"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#555", wordBreak: "break-all" } }, user.uid)), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "#AFA9EC", marginBottom: 8 } }, "Change Username"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement("input", { style: { ...S.input, flex: 1 }, placeholder: "New username", value: settingsNewUsername, onChange: (e) => setSettingsNewUsername(e.target.value) }), /* @__PURE__ */ React.createElement("button", { style: S.btn("primary"), onClick: () => {
+        handleChangeUsername(settingsNewUsername);
+        setSettingsNewUsername("");
+      } }, "Save"))), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "#AFA9EC", marginBottom: 8 } }, "Change Password"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement("input", { style: { ...S.input, flex: 1 }, placeholder: "New password", type: "password", value: settingsNewPassword, onChange: (e) => setSettingsNewPassword(e.target.value) }), /* @__PURE__ */ React.createElement("button", { style: S.btn("primary"), onClick: () => {
+        handleChangePassword(settingsNewPassword);
+        setSettingsNewPassword("");
+      } }, "Save")), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), marginTop: 6, width: "100%", fontSize: 11 }, onClick: handleResetPassword }, "Send Password Reset Email")), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "#AFA9EC", marginBottom: 8 } }, "Game Data"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777", marginBottom: 4 } }, "Cards: ", new Set(game.collection).size, "/", ALL_CARDS.length, " \xB7 Wins: ", game.stats.wins, " \xB7 Losses: ", game.stats.losses), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), width: "100%", fontSize: 11 }, onClick: () => {
+        if (confirm("Reset all local game data? Your cloud save will remain.")) {
+          localStorage.removeItem("deck_save");
+          setGame(makeInitialState());
+          toast("Local data reset.", "info");
+        }
+      } }, "Reset Local Data")), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), width: "100%" }, onClick: handleLogout }, "Log Out"), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "#E24B4A", marginBottom: 8 } }, "Danger Zone"), !deleteConfirm ? /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("danger"), width: "100%", fontSize: 11 }, onClick: () => setDeleteConfirm(true) }, "Delete Account") : /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#F09595", marginBottom: 8 } }, "This will permanently delete your account, username, friends, and all cloud data. This cannot be undone."), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("danger"), flex: 1, fontSize: 11 }, onClick: handleDeleteAccount }, "Yes, Delete Forever"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), flex: 1, fontSize: 11 }, onClick: () => setDeleteConfirm(false) }, "Cancel")))), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontSize: 10, color: "#555", marginTop: 8 } }, "Deck v", VERSION));
+    };
+    const navItems = [{ id: "home", label: "Home", icon: "\u25C9" }, { id: "packs", label: "Packs", icon: "\u25C6" }, { id: "collection", label: "Cards", icon: "\u25C7" }, { id: "decks", label: "Decks", icon: "\u2630" }, { id: "social", label: "Social", icon: "\u25CE" }, { id: "settings", label: "Settings", icon: "\u2699" }];
     if (authScreen) return /* @__PURE__ */ React.createElement("div", { style: S.app }, /* @__PURE__ */ React.createElement("style", null, `@keyframes slideDown{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}`), /* @__PURE__ */ React.createElement(Toasts, null), AuthScreenUI());
-    return /* @__PURE__ */ React.createElement("div", { style: S.app }, /* @__PURE__ */ React.createElement("style", null, `@keyframes slideDown{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}*{box-sizing:border-box}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:rgba(127,119,221,.3);border-radius:2px}`), /* @__PURE__ */ React.createElement(Toasts, null), screen === "home" && HomeScreen(), screen === "packs" && PackScreen(), screen === "collection" && /* @__PURE__ */ React.createElement(CollectionScreen, null), screen === "decks" && DecksScreen(), screen === "deckbuilder" && /* @__PURE__ */ React.createElement(DeckBuilder, null), screen === "battle" && /* @__PURE__ */ React.createElement(BattleScreen, null), screen === "social" && SocialScreen(), screen !== "deckbuilder" && screen !== "battle" && /* @__PURE__ */ React.createElement("div", { style: S.nav }, navItems.map((n) => /* @__PURE__ */ React.createElement("div", { key: n.id, style: S.navItem(screen === n.id), onClick: () => setScreen(n.id) }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16 } }, n.icon), /* @__PURE__ */ React.createElement("span", null, n.label))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, fontSize: 10, color: "#EF9F27", fontWeight: 500 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14 } }, "\u2B21"), /* @__PURE__ */ React.createElement("span", null, game.coins.toLocaleString()))));
+    return /* @__PURE__ */ React.createElement("div", { style: S.app }, /* @__PURE__ */ React.createElement("style", null, `@keyframes slideDown{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}*{box-sizing:border-box}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:rgba(127,119,221,.3);border-radius:2px}`), /* @__PURE__ */ React.createElement(Toasts, null), screen === "home" && HomeScreen(), screen === "packs" && PackScreen(), screen === "collection" && /* @__PURE__ */ React.createElement(CollectionScreen, null), screen === "decks" && DecksScreen(), screen === "deckbuilder" && /* @__PURE__ */ React.createElement(DeckBuilder, null), screen === "battle" && /* @__PURE__ */ React.createElement(BattleScreen, null), screen === "social" && SocialScreen(), screen === "settings" && /* @__PURE__ */ React.createElement(SettingsScreen, null), screen !== "deckbuilder" && screen !== "battle" && /* @__PURE__ */ React.createElement("div", { style: S.nav }, navItems.map((n) => /* @__PURE__ */ React.createElement("div", { key: n.id, style: S.navItem(screen === n.id), onClick: () => setScreen(n.id) }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16 } }, n.icon), /* @__PURE__ */ React.createElement("span", null, n.label))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, fontSize: 10, color: "#EF9F27", fontWeight: 500 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14 } }, "\u2B21"), /* @__PURE__ */ React.createElement("span", null, game.coins.toLocaleString()))));
   }
   return __toCommonJS(game_exports);
 })();
