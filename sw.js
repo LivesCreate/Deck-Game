@@ -1,4 +1,4 @@
-const CACHE_NAME = "deck-v2.1.0";
+const CACHE_NAME = "deck-v2.2.0";
 const ASSETS = [
   "./",
   "./index.html",

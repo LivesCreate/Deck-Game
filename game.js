@@ -29,7 +29,7 @@ var CardGameModule = (() => {
     default: () => CardGame
   });
   var import_react = __require("react");
-  var VERSION = "2.1.0";
+  var VERSION = "2.2.0";
   var FIREBASE_CONFIG = {
     apiKey: "AIzaSyBEgpJaRGN-Q8EnsZ-gwXUz7ySQJpBz0mw",
     authDomain: "deck-d04c7.firebaseapp.com",
@@ -738,7 +738,13 @@ var CardGameModule = (() => {
         let pb = [...b.playerBoard];
         let php = b.playerHp;
         let ahp = b.aiHp;
+        let aiFatigue = b.aiFatigue || 0;
         if (ad.length > 0) ah.push(ad.shift());
+        else {
+          aiFatigue++;
+          ahp -= aiFatigue;
+          log.push("AI takes " + aiFatigue + " fatigue damage!");
+        }
         const sorted = [...ah].sort((a, b2) => b2.cost - a.cost);
         const played = [];
         for (const card of sorted) {
@@ -793,8 +799,14 @@ var CardGameModule = (() => {
         const npm = Math.min(b.playerMaxMana + 1, MAX_MANA);
         let pd = [...b.playerDeck];
         let phand = [...b.playerHand];
+        let playerFatigue = b.playerFatigue || 0;
         if (pd.length > 0) phand.push(pd.shift());
-        return { ...b, playerHp: php, aiHp: ahp, playerBoard: pb, aiBoard: ab, aiHand: ah, aiDeck: ad, aiMaxMana: nmm, aiMana: am, playerMaxMana: npm, playerMana: npm, playerHand: phand, playerDeck: pd, turn: b.turn + 1, isPlayerTurn: true, phase: php <= 0 ? "lost" : ahp <= 0 ? "won" : "playing", log: [...log, "Your turn."] };
+        else {
+          playerFatigue++;
+          php -= playerFatigue;
+          log.push("You take " + playerFatigue + " fatigue damage!");
+        }
+        return { ...b, playerHp: php, aiHp: ahp, playerBoard: pb, aiBoard: ab, aiHand: ah, aiDeck: ad, aiMaxMana: nmm, aiMana: am, playerMaxMana: npm, playerMana: npm, playerHand: phand, playerDeck: pd, turn: b.turn + 1, isPlayerTurn: true, phase: php <= 0 ? "lost" : ahp <= 0 ? "won" : "playing", log: [...log, "Your turn."], aiFatigue, playerFatigue };
       });
     }, []);
     (0, import_react.useEffect)(() => {
@@ -828,7 +840,7 @@ var CardGameModule = (() => {
       const c = battleCard || cardDef;
       const r = RARITIES[cardDef.rarity];
       const ab = getAbility(cardDef.abilityId);
-      return /* @__PURE__ */ React.createElement("div", { style: S.miniCard(cardDef.rarity, selected), onClick, title: ab.desc || cardDef.name }, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 3, left: 5, fontSize: 9, color: "#378ADD", fontWeight: 600 } }, c.cost || cardDef.cost), battleCard?.shielded && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 2, right: 4, fontSize: 8, color: "#378ADD" } }, "\u25C8"), /* @__PURE__ */ React.createElement(ShapeIcon, { shape: cardDef.shape, color: r.color, size: 22 }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8, fontWeight: 500, textAlign: "center", lineHeight: 1.1, maxWidth: 56, overflow: "hidden" } }, cardDef.name), ab.id !== "none" && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 7, color: r.color, fontWeight: 500 } }, ab.name), showStats !== false && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", width: "100%", padding: "0 4px" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#EF9F27", fontWeight: 600 } }, battleCard ? c.currentAtk : cardDef.atk), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#E24B4A", fontWeight: 600 } }, battleCard ? c.currentHp : cardDef.hp)));
+      return /* @__PURE__ */ React.createElement("div", { style: S.miniCard(cardDef.rarity, selected), onClick, title: ab.desc || cardDef.name }, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 3, left: 5, fontSize: 9, color: "#378ADD", fontWeight: 600 }, title: "Mana cost" }, "\u2B21", c.cost || cardDef.cost), battleCard?.shielded && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 2, right: 4, fontSize: 8, color: "#378ADD" } }, "\u25C8"), /* @__PURE__ */ React.createElement(ShapeIcon, { shape: cardDef.shape, color: r.color, size: 22 }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8, fontWeight: 500, textAlign: "center", lineHeight: 1.1, maxWidth: 56, overflow: "hidden" } }, cardDef.name), ab.id !== "none" && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 7, color: r.color, fontWeight: 500 } }, ab.name), showStats !== false && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", width: "100%", padding: "0 4px" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#EF9F27", fontWeight: 600 }, title: "Attack" }, "\u2694", battleCard ? c.currentAtk : cardDef.atk), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#E24B4A", fontWeight: 600 }, title: "Health" }, "\u2665", battleCard ? c.currentHp : cardDef.hp)));
     };
     const Toasts = () => /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 999, display: "flex", flexDirection: "column", gap: 6, maxWidth: 380, width: "90%" } }, toasts.map((t) => /* @__PURE__ */ React.createElement("div", { key: t.id, style: { padding: "10px 16px", borderRadius: 10, fontSize: 13, fontWeight: 500, background: t.type === "error" ? "#E24B4A" : t.type === "success" ? "#1D9E75" : "#7F77DD", color: "#fff", animation: "slideDown .3s ease", boxShadow: "0 4px 12px rgba(0,0,0,.15)" } }, t.msg)));
     const AuthScreenUI = () => /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "24px 0 8px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600, letterSpacing: 2 } }, "DECK"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777", marginTop: 2 } }, authScreen === "register" ? "Create Account" : "Log In")), authError && /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 12px", borderRadius: 8, background: "#501313", color: "#F09595", fontSize: 12 } }, authError), /* @__PURE__ */ React.createElement("input", { style: S.input, placeholder: "Email", type: "email", value: authEmail, onChange: (e) => setAuthEmail(e.target.value) }), authScreen === "register" && /* @__PURE__ */ React.createElement("input", { style: S.input, placeholder: "Username (3-16 characters)", value: authUsername, onChange: (e) => setAuthUsername(e.target.value) }), /* @__PURE__ */ React.createElement("input", { style: S.input, placeholder: "Password", type: "password", value: authPass, onChange: (e) => setAuthPass(e.target.value) }), /* @__PURE__ */ React.createElement("button", { style: S.btn("primary"), onClick: authScreen === "register" ? handleRegister : handleLogin, disabled: authLoading }, authLoading ? "Loading..." : authScreen === "register" ? "Create Account" : "Log In"), /* @__PURE__ */ React.createElement("button", { style: S.btn("success"), onClick: handleGoogleLogin }, "Sign in with Google"), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontSize: 12, color: "#777" } }, authScreen === "register" ? /* @__PURE__ */ React.createElement("span", null, "Have an account? ", /* @__PURE__ */ React.createElement("span", { style: { color: "#AFA9EC", cursor: "pointer" }, onClick: () => {
@@ -887,7 +899,7 @@ var CardGameModule = (() => {
             setAtk(null);
           }
         }, style: { cursor: canT ? "crosshair" : "default" } }, /* @__PURE__ */ React.createElement(MiniCard, { cardDef: def, battleCard: bc }));
-      })), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontSize: 10, color: "#777" } }, "Turn ", battle.turn, " \xB7 ", over ? battle.phase === "won" ? "Victory!" : "Defeat" : battle.isPlayerTurn ? "Your turn" : "AI..."), /* @__PURE__ */ React.createElement("div", { style: { minHeight: 80, padding: "6px 4px", borderRadius: 8, background: "rgba(127,119,221,.08)", display: "flex", gap: 4, alignItems: "center", justifyContent: "center", flexWrap: "wrap" } }, battle.playerBoard.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "Empty") : battle.playerBoard.map((bc, i) => {
+      })), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontSize: 10, color: "#777" } }, "Turn ", battle.turn, " \xB7 ", over ? battle.phase === "won" ? "Victory!" : "Defeat" : battle.isPlayerTurn ? "Your turn" : "AI..."), battle.turn <= 2 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontSize: 9, color: "#555" } }, "\u2B21 = mana cost \xB7 \u2694 = attack \xB7 \u2665 = health \xB7 Tap a card to play or select"), /* @__PURE__ */ React.createElement("div", { style: { minHeight: 80, padding: "6px 4px", borderRadius: 8, background: "rgba(127,119,221,.08)", display: "flex", gap: 4, alignItems: "center", justifyContent: "center", flexWrap: "wrap" } }, battle.playerBoard.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "Empty") : battle.playerBoard.map((bc, i) => {
         const def = ALL_CARDS.find((c) => c.id === bc.id) || bc;
         return /* @__PURE__ */ React.createElement("div", { key: bc.uid, onClick: () => {
           if (battle.isPlayerTurn && !over) setAtk(atk === i ? null : i);
