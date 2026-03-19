@@ -12,18 +12,12 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body, #root {
-      width: 100%;
-      min-height: 100vh;
-      background: #1a1a1e;
-      color: #e8e6df;
+      width: 100%; min-height: 100vh; background: #1a1a1e; color: #e8e6df;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased; overflow-x: hidden;
     }
     body { background: #1a1a1e; }
     ::-webkit-scrollbar { width: 4px; height: 4px; }
-    ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: rgba(127,119,221,.3); border-radius: 2px; }
     @keyframes slideDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
     input, button, select, textarea { font-family: inherit; }
@@ -32,36 +26,36 @@
 <body>
   <div id="root"></div>
 
-  <!-- React 18 Production CDN -->
+  <!-- React 18 -->
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 
-  <!-- Require shim for esbuild compiled modules -->
+  <!-- Firebase 10 (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+  <!-- Require shim -->
   <script>
     window.require = function(mod) {
       if (mod === "react") return window.React;
       if (mod === "react-dom") return window.ReactDOM;
       if (mod === "react-dom/client") return window.ReactDOM;
-      throw new Error("Cannot require module: " + mod);
+      throw new Error("Cannot require: " + mod);
     };
   </script>
 
-  <!-- Game code (compiled JSX) -->
   <script src="game.js"></script>
 
-  <!-- Mount the app -->
   <script>
     const root = ReactDOM.createRoot(document.getElementById("root"));
     const App = CardGameModule.default || CardGameModule.CardGame || CardGameModule;
     root.render(React.createElement(App));
   </script>
 
-  <!-- Register service worker -->
   <script>
     if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("sw.js").catch(() => {});
-      });
+      navigator.serviceWorker.register("sw.js").catch(() => {});
     }
   </script>
 </body>

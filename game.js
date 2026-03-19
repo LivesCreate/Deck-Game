@@ -29,6 +29,38 @@ var CardGameModule = (() => {
     default: () => CardGame
   });
   var import_react = __require("react");
+  var VERSION = "2.0.0";
+  var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyBEgpJaRGN-Q8EnsZ-gwXUz7ySQJpBz0mw",
+    authDomain: "deck-d04c7.firebaseapp.com",
+    projectId: "deck-d04c7",
+    storageBucket: "deck-d04c7.firebasestorage.app",
+    messagingSenderId: "400869382769",
+    appId: "1:400869382769:web:a16c668f5aea36a20799d0"
+  };
+  function getFirebase() {
+    if (!window.firebase) return null;
+    if (!window._fbApp) {
+      try {
+        window._fbApp = window.firebase.initializeApp(FIREBASE_CONFIG);
+      } catch (e) {
+        try {
+          window._fbApp = window.firebase.app();
+        } catch (e2) {
+          return null;
+        }
+      }
+    }
+    return window.firebase;
+  }
+  function getAuth() {
+    const fb = getFirebase();
+    return fb ? fb.auth() : null;
+  }
+  function getDb() {
+    const fb = getFirebase();
+    return fb ? fb.firestore() : null;
+  }
   var SHAPES = {
     triangle: (c) => /* @__PURE__ */ React.createElement("polygon", { points: "16,2 30,30 2,30", fill: c }),
     circle: (c) => /* @__PURE__ */ React.createElement("circle", { cx: "16", cy: "16", r: "14", fill: c }),
@@ -40,10 +72,10 @@ var CardGameModule = (() => {
     pentagon: (c) => /* @__PURE__ */ React.createElement("polygon", { points: "16,2 30,12 25,28 7,28 2,12", fill: c })
   };
   var RARITIES = {
-    common: { label: "Common", color: "#888780", bg: "#F1EFE8", darkBg: "#2C2C2A", pity: 0 },
-    rare: { label: "Rare", color: "#1D9E75", bg: "#E1F5EE", darkBg: "#085041", pity: 0 },
-    epic: { label: "Epic", color: "#534AB7", bg: "#EEEDFE", darkBg: "#26215C", pity: 0 },
-    legendary: { label: "Legendary", color: "#BA7517", bg: "#FAEEDA", darkBg: "#412402", pity: 0 }
+    common: { label: "Common", color: "#888780", darkBg: "#2C2C2A" },
+    rare: { label: "Rare", color: "#1D9E75", darkBg: "#085041" },
+    epic: { label: "Epic", color: "#534AB7", darkBg: "#26215C" },
+    legendary: { label: "Legendary", color: "#BA7517", darkBg: "#412402" }
   };
   var ABILITIES = [
     { id: "none", name: "None", desc: "" },
@@ -101,15 +133,15 @@ var CardGameModule = (() => {
   ];
   var getAbility = (id) => ABILITIES.find((a) => a.id === id) || ABILITIES[0];
   var uid = () => Math.random().toString(36).slice(2, 10);
-  var shuffle = (arr) => {
-    const a = [...arr];
-    for (let i = a.length - 1; i > 0; i--) {
+  var shuffle = (a) => {
+    const b = [...a];
+    for (let i = b.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
+      [b[i], b[j]] = [b[j], b[i]];
     }
-    return a;
+    return b;
   };
-  var pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  var pick = (a) => a[Math.floor(Math.random() * a.length)];
   var STARTER_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15, 20, 36];
   var DECK_SIZE = 15;
   var HAND_SIZE = 4;
@@ -117,14 +149,7 @@ var CardGameModule = (() => {
   var STARTING_HP = 20;
   var MAX_MANA = 10;
   function makeInitialState() {
-    return {
-      coins: 500,
-      collection: STARTER_IDS.map((id) => id),
-      decks: [{ id: "starter", name: "Starter Deck", cardIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15, 20, 36, 5] }],
-      activeDeckId: "starter",
-      stats: { wins: 0, losses: 0, totalGames: 0 },
-      aiTier: 1
-    };
+    return { coins: 500, collection: STARTER_IDS.map((id) => id), decks: [{ id: "starter", name: "Starter Deck", cardIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15, 20, 36, 5] }], activeDeckId: "starter", stats: { wins: 0, losses: 0, totalGames: 0 }, aiTier: 1 };
   }
   function rollRarity() {
     const r = Math.random();
@@ -143,54 +168,24 @@ var CardGameModule = (() => {
     return cards;
   }
   function buildAIDeck(tier) {
-    const maxCost = Math.min(4 + tier, 10);
-    const pool = ALL_CARDS.filter((c) => c.cost <= maxCost);
-    const deck = [];
-    for (let i = 0; i < DECK_SIZE; i++) {
-      deck.push({ ...pick(pool), uid: uid() });
-    }
-    return deck;
+    const mx = Math.min(4 + tier, 10);
+    const pool = ALL_CARDS.filter((c) => c.cost <= mx);
+    const d = [];
+    for (let i = 0; i < DECK_SIZE; i++) d.push({ ...pick(pool), uid: uid() });
+    return d;
   }
-  function createBattleCard(cardDef) {
-    return {
-      ...cardDef,
-      uid: uid(),
-      currentHp: cardDef.hp,
-      currentAtk: cardDef.atk,
-      hasAttacked: false,
-      canAttack: cardDef.abilityId === "rush",
-      shielded: cardDef.abilityId === "shield",
-      justPlayed: true
-    };
+  function createBattleCard(cd) {
+    return { ...cd, uid: uid(), currentHp: cd.hp, currentAtk: cd.atk, hasAttacked: false, canAttack: cd.abilityId === "rush", shielded: cd.abilityId === "shield", justPlayed: true };
   }
-  function initBattle(playerDeckIds, aiTier) {
-    const pCards = shuffle(playerDeckIds.map((id) => {
-      const def = ALL_CARDS.find((c) => c.id === id);
-      return def ? { ...def, uid: uid() } : { ...ALL_CARDS[0], uid: uid() };
+  function initBattle(ids, tier) {
+    const p = shuffle(ids.map((id) => {
+      const d = ALL_CARDS.find((c) => c.id === id);
+      return d ? { ...d, uid: uid() } : { ...ALL_CARDS[0], uid: uid() };
     }));
-    const aCards = buildAIDeck(aiTier);
-    const pHand = pCards.splice(0, HAND_SIZE);
-    const aHand = aCards.splice(0, HAND_SIZE);
-    return {
-      playerHp: STARTING_HP,
-      aiHp: STARTING_HP,
-      playerMana: 1,
-      playerMaxMana: 1,
-      aiMana: 1,
-      aiMaxMana: 1,
-      playerBoard: [],
-      aiBoard: [],
-      playerHand: pHand,
-      aiHand: aHand,
-      playerDeck: pCards,
-      aiDeck: aCards,
-      turn: 1,
-      isPlayerTurn: true,
-      phase: "playing",
-      log: ["Battle started! Your turn."],
-      selectedCard: null,
-      attackingCard: null
-    };
+    const a = buildAIDeck(tier);
+    const ph = p.splice(0, HAND_SIZE);
+    const ah = a.splice(0, HAND_SIZE);
+    return { playerHp: STARTING_HP, aiHp: STARTING_HP, playerMana: 1, playerMaxMana: 1, aiMana: 1, aiMaxMana: 1, playerBoard: [], aiBoard: [], playerHand: ph, aiHand: ah, playerDeck: p, aiDeck: a, turn: 1, isPlayerTurn: true, phase: "playing", log: ["Battle started! Your turn."] };
   }
   var toastId = 0;
   function CardGame() {
@@ -210,7 +205,20 @@ var CardGameModule = (() => {
     const [editDeckId, setEditDeckId] = (0, import_react.useState)(null);
     const [deckBuilderCards, setDeckBuilderCards] = (0, import_react.useState)([]);
     const [deckName, setDeckName] = (0, import_react.useState)("");
-    const aiThinking = (0, import_react.useRef)(false);
+    const [user, setUser] = (0, import_react.useState)(null);
+    const [username, setUsername] = (0, import_react.useState)("");
+    const [authScreen, setAuthScreen] = (0, import_react.useState)(null);
+    const [authEmail, setAuthEmail] = (0, import_react.useState)("");
+    const [authPass, setAuthPass] = (0, import_react.useState)("");
+    const [authUsername, setAuthUsername] = (0, import_react.useState)("");
+    const [authLoading, setAuthLoading] = (0, import_react.useState)(false);
+    const [authError, setAuthError] = (0, import_react.useState)("");
+    const [friends, setFriends] = (0, import_react.useState)([]);
+    const [friendRequests, setFriendRequests] = (0, import_react.useState)([]);
+    const [searchQuery, setSearchQuery] = (0, import_react.useState)("");
+    const [searchResults, setSearchResults] = (0, import_react.useState)([]);
+    const [battleRequests, setBattleRequests] = (0, import_react.useState)([]);
+    const unsubRefs = (0, import_react.useRef)([]);
     (0, import_react.useEffect)(() => {
       try {
         localStorage.setItem("deck_save", JSON.stringify(game));
@@ -222,51 +230,249 @@ var CardGameModule = (() => {
       setToasts((t) => [...t, { id, msg, type }]);
       setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3e3);
     }, []);
-    const handleOpenPack = (0, import_react.useCallback)((premium) => {
-      const cost = premium ? 200 : 100;
+    (0, import_react.useEffect)(() => {
+      const auth = getAuth();
+      if (!auth) return;
+      const unsub = auth.onAuthStateChanged(async (u) => {
+        setUser(u);
+        if (u) {
+          const db = getDb();
+          if (db) {
+            const doc = await db.collection("users").doc(u.uid).get();
+            if (doc.exists) {
+              const d = doc.data();
+              setUsername(d.username || "");
+              if (d.gameState && d.gameState.stats && d.gameState.stats.totalGames > (game.stats?.totalGames || 0)) setGame(d.gameState);
+            }
+          }
+          ;
+          setupListeners(u.uid);
+        } else {
+          setUsername("");
+          cleanupListeners();
+        }
+      });
+      return () => unsub();
+    }, []);
+    (0, import_react.useEffect)(() => {
+      if (!user) return;
+      const db = getDb();
+      if (!db) return;
+      const t = setTimeout(() => {
+        db.collection("users").doc(user.uid).set({ gameState: game }, { merge: true }).catch(() => {
+        });
+      }, 2e3);
+      return () => clearTimeout(t);
+    }, [game, user]);
+    function setupListeners(myUid) {
+      cleanupListeners();
+      const db = getDb();
+      if (!db) return;
+      const u1 = db.collection("users").doc(myUid).collection("friends").onSnapshot((snap) => {
+        const f = [];
+        const r = [];
+        snap.forEach((doc) => {
+          const d = { id: doc.id, ...doc.data() };
+          if (d.status === "accepted") f.push(d);
+          else if (d.status === "pending" && d.sentBy !== myUid) r.push(d);
+        });
+        setFriends(f);
+        setFriendRequests(r);
+      });
+      const u2 = db.collection("users").doc(myUid).collection("battleRequests").onSnapshot((snap) => {
+        const reqs = [];
+        snap.forEach((doc) => reqs.push({ id: doc.id, ...doc.data() }));
+        setBattleRequests(reqs);
+        reqs.forEach((req) => {
+          if (req.status === "pending") toast(req.fromUsername + " wants to battle!", "info");
+        });
+      });
+      unsubRefs.current = [u1, u2];
+    }
+    function cleanupListeners() {
+      unsubRefs.current.forEach((u) => u && u());
+      unsubRefs.current = [];
+    }
+    const handleRegister = (0, import_react.useCallback)(async () => {
+      const auth = getAuth();
+      const db = getDb();
+      if (!auth || !db) {
+        setAuthError("Firebase not loaded.");
+        return;
+      }
+      if (!authEmail || !authPass || !authUsername) {
+        setAuthError("Fill in all fields.");
+        return;
+      }
+      if (authUsername.length < 3 || authUsername.length > 16) {
+        setAuthError("Username 3-16 chars.");
+        return;
+      }
+      if (!/^[a-zA-Z0-9_]+$/.test(authUsername)) {
+        setAuthError("Letters, numbers, underscores only.");
+        return;
+      }
+      setAuthLoading(true);
+      setAuthError("");
+      try {
+        const ex = await db.collection("users").where("usernameLC", "==", authUsername.toLowerCase()).get();
+        if (!ex.empty) {
+          setAuthError("Username taken.");
+          setAuthLoading(false);
+          return;
+        }
+        const cred = await auth.createUserWithEmailAndPassword(authEmail, authPass);
+        await db.collection("users").doc(cred.user.uid).set({ username: authUsername, usernameLC: authUsername.toLowerCase(), gameState: game, createdAt: window.firebase.firestore.FieldValue.serverTimestamp() });
+        setAuthScreen(null);
+        toast("Welcome, " + authUsername + "!", "success");
+      } catch (e) {
+        setAuthError(e.message);
+      }
+      setAuthLoading(false);
+    }, [authEmail, authPass, authUsername, game, toast]);
+    const handleLogin = (0, import_react.useCallback)(async () => {
+      const auth = getAuth();
+      if (!auth) {
+        setAuthError("Firebase not loaded.");
+        return;
+      }
+      if (!authEmail || !authPass) {
+        setAuthError("Fill in all fields.");
+        return;
+      }
+      setAuthLoading(true);
+      setAuthError("");
+      try {
+        await auth.signInWithEmailAndPassword(authEmail, authPass);
+        setAuthScreen(null);
+        toast("Logged in!", "success");
+      } catch (e) {
+        setAuthError(e.message);
+      }
+      setAuthLoading(false);
+    }, [authEmail, authPass, toast]);
+    const handleLogout = (0, import_react.useCallback)(async () => {
+      const auth = getAuth();
+      if (auth) await auth.signOut();
+      toast("Logged out.", "info");
+    }, [toast]);
+    const searchUsers = (0, import_react.useCallback)(async () => {
+      const db = getDb();
+      if (!db || !searchQuery.trim()) return;
+      try {
+        const snap = await db.collection("users").where("usernameLC", ">=", searchQuery.toLowerCase()).where("usernameLC", "<=", searchQuery.toLowerCase() + "\uF8FF").limit(10).get();
+        const r = [];
+        snap.forEach((doc) => {
+          if (doc.id !== user?.uid) r.push({ uid: doc.id, ...doc.data() });
+        });
+        setSearchResults(r);
+      } catch (e) {
+        toast("Search failed.", "error");
+      }
+    }, [searchQuery, user, toast]);
+    const sendFriendRequest = (0, import_react.useCallback)(async (tUid, tName) => {
+      const db = getDb();
+      if (!db || !user) return;
+      try {
+        await db.collection("users").doc(user.uid).collection("friends").doc(tUid).set({ username: tName, status: "pending", sentBy: user.uid, timestamp: window.firebase.firestore.FieldValue.serverTimestamp() });
+        await db.collection("users").doc(tUid).collection("friends").doc(user.uid).set({ username, status: "pending", sentBy: user.uid, timestamp: window.firebase.firestore.FieldValue.serverTimestamp() });
+        toast("Request sent to " + tName + "!", "success");
+      } catch (e) {
+        toast("Failed.", "error");
+      }
+    }, [user, username, toast]);
+    const acceptFriend = (0, import_react.useCallback)(async (fUid) => {
+      const db = getDb();
+      if (!db || !user) return;
+      try {
+        await db.collection("users").doc(user.uid).collection("friends").doc(fUid).update({ status: "accepted" });
+        await db.collection("users").doc(fUid).collection("friends").doc(user.uid).update({ status: "accepted" });
+        toast("Friend added!", "success");
+      } catch (e) {
+        toast("Failed.", "error");
+      }
+    }, [user, toast]);
+    const declineFriend = (0, import_react.useCallback)(async (fUid) => {
+      const db = getDb();
+      if (!db || !user) return;
+      try {
+        await db.collection("users").doc(user.uid).collection("friends").doc(fUid).delete();
+        await db.collection("users").doc(fUid).collection("friends").doc(user.uid).delete();
+      } catch (e) {
+      }
+    }, [user]);
+    const sendBattleRequest = (0, import_react.useCallback)(async (tUid, tName) => {
+      const db = getDb();
+      if (!db || !user) return;
+      const deck = game.decks.find((d) => d.id === game.activeDeckId);
+      if (!deck || deck.cardIds.length !== DECK_SIZE) {
+        toast("Select a valid deck!", "error");
+        return;
+      }
+      try {
+        await db.collection("users").doc(tUid).collection("battleRequests").add({ fromUid: user.uid, fromUsername: username, status: "pending", timestamp: window.firebase.firestore.FieldValue.serverTimestamp() });
+        toast("Battle request sent to " + tName + "!", "success");
+      } catch (e) {
+        toast("Failed.", "error");
+      }
+    }, [user, username, game, toast]);
+    const acceptBattleReq = (0, import_react.useCallback)(async (req) => {
+      const db = getDb();
+      if (!db || !user) return;
+      try {
+        await db.collection("users").doc(user.uid).collection("battleRequests").doc(req.id).update({ status: "accepted" });
+        toast("Battle accepted! (PvP coming soon)", "success");
+      } catch (e) {
+      }
+    }, [user, toast]);
+    const declineBattleReq = (0, import_react.useCallback)(async (req) => {
+      const db = getDb();
+      if (!db || !user) return;
+      try {
+        await db.collection("users").doc(user.uid).collection("battleRequests").doc(req.id).delete();
+      } catch (e) {
+      }
+    }, [user]);
+    const handleOpenPack = (0, import_react.useCallback)((prem) => {
+      const cost = prem ? 200 : 100;
       if (game.coins < cost) {
         toast("Not enough coins!", "error");
         return;
       }
       const cards = openPack();
-      if (premium) {
-        if (!cards.some((c) => c.rarity === "epic" || c.rarity === "legendary")) {
-          const pool = ALL_CARDS.filter((c) => c.rarity === "epic");
-          cards[4] = { ...pick(pool), uid: uid() };
-        }
+      if (prem && !cards.some((c) => c.rarity === "epic" || c.rarity === "legendary")) {
+        const pool = ALL_CARDS.filter((c) => c.rarity === "epic");
+        cards[4] = { ...pick(pool), uid: uid() };
       }
       setGame((g) => ({ ...g, coins: g.coins - cost }));
       setPackCards(cards);
       setRevealedCards([]);
     }, [game.coins, toast]);
-    const revealCard = (0, import_react.useCallback)((index) => {
-      if (!packCards || revealedCards.includes(index)) return;
-      setRevealedCards((r) => [...r, index]);
-      const card = packCards[index];
-      const isNew = !game.collection.includes(card.id);
-      if (isNew) {
+    const revealCard = (0, import_react.useCallback)((i) => {
+      if (!packCards || revealedCards.includes(i)) return;
+      setRevealedCards((r) => [...r, i]);
+      const card = packCards[i];
+      if (!game.collection.includes(card.id)) {
         setGame((g) => ({ ...g, collection: [...g.collection, card.id] }));
-        toast(`New card: ${card.name}!`, "success");
+        toast("New: " + card.name + "!", "success");
       } else {
-        const dupeCoins = card.rarity === "legendary" ? 50 : card.rarity === "epic" ? 25 : card.rarity === "rare" ? 10 : 5;
-        setGame((g) => ({ ...g, coins: g.coins + dupeCoins }));
-        toast(`Duplicate ${card.name} \u2192 +${dupeCoins} coins`, "info");
+        const dc = card.rarity === "legendary" ? 50 : card.rarity === "epic" ? 25 : card.rarity === "rare" ? 10 : 5;
+        setGame((g) => ({ ...g, coins: g.coins + dc }));
+        toast("Dupe " + card.name + " \u2192 +" + dc, "info");
       }
     }, [packCards, revealedCards, game.collection, toast]);
     const revealAll = (0, import_react.useCallback)(() => {
       if (!packCards) return;
-      packCards.forEach((card, i) => {
-        if (!revealedCards.includes(i)) {
-          setTimeout(() => revealCard(i), i * 200);
-        }
+      packCards.forEach((_, i) => {
+        if (!revealedCards.includes(i)) setTimeout(() => revealCard(i), i * 200);
       });
     }, [packCards, revealedCards, revealCard]);
-    const startDeckEdit = (0, import_react.useCallback)((deckId) => {
-      const deck = game.decks.find((d) => d.id === deckId);
+    const startDeckEdit = (0, import_react.useCallback)((did) => {
+      const deck = game.decks.find((d) => d.id === did);
       if (deck) {
         setDeckBuilderCards([...deck.cardIds]);
         setDeckName(deck.name);
-        setEditDeckId(deckId);
+        setEditDeckId(did);
       } else {
         setDeckBuilderCards([]);
         setDeckName("New Deck");
@@ -276,228 +482,129 @@ var CardGameModule = (() => {
     }, [game.decks]);
     const saveDeck = (0, import_react.useCallback)(() => {
       if (deckBuilderCards.length !== DECK_SIZE) {
-        toast(`Deck needs exactly ${DECK_SIZE} cards (has ${deckBuilderCards.length})`, "error");
+        toast("Need " + DECK_SIZE + " cards", "error");
         return;
       }
       setGame((g) => {
-        const exists = g.decks.find((d) => d.id === editDeckId);
-        const newDeck = { id: editDeckId, name: deckName, cardIds: [...deckBuilderCards] };
-        if (exists) {
-          return { ...g, decks: g.decks.map((d) => d.id === editDeckId ? newDeck : d) };
-        }
-        return { ...g, decks: [...g.decks, newDeck] };
+        const ex = g.decks.find((d) => d.id === editDeckId);
+        const nd = { id: editDeckId, name: deckName, cardIds: [...deckBuilderCards] };
+        return ex ? { ...g, decks: g.decks.map((d) => d.id === editDeckId ? nd : d) } : { ...g, decks: [...g.decks, nd] };
       });
       toast("Deck saved!", "success");
       setScreen("decks");
     }, [deckBuilderCards, deckName, editDeckId, toast]);
-    const addToDeck = (0, import_react.useCallback)((cardId) => {
+    const addToDeck = (0, import_react.useCallback)((cid) => {
       if (deckBuilderCards.length >= DECK_SIZE) {
-        toast("Deck is full!", "error");
+        toast("Full!", "error");
         return;
       }
-      const count = deckBuilderCards.filter((id) => id === cardId).length;
-      if (count >= 2) {
-        toast("Max 2 copies per card!", "error");
+      if (deckBuilderCards.filter((id) => id === cid).length >= 2) {
+        toast("Max 2 copies!", "error");
         return;
       }
-      setDeckBuilderCards((c) => [...c, cardId]);
+      setDeckBuilderCards((c) => [...c, cid]);
     }, [deckBuilderCards, toast]);
-    const removeFromDeck = (0, import_react.useCallback)((index) => {
-      setDeckBuilderCards((c) => c.filter((_, i) => i !== index));
+    const removeFromDeck = (0, import_react.useCallback)((i) => {
+      setDeckBuilderCards((c) => c.filter((_, j) => j !== i));
     }, []);
     const startBattle = (0, import_react.useCallback)(() => {
       const deck = game.decks.find((d) => d.id === game.activeDeckId);
       if (!deck || deck.cardIds.length !== DECK_SIZE) {
-        toast("Select a valid deck with 15 cards!", "error");
+        toast("Select a valid deck!", "error");
         return;
       }
       setBattle(initBattle(deck.cardIds, game.aiTier));
       setScreen("battle");
-      toast(`Battle vs AI Tier ${game.aiTier}!`, "info");
+      toast("Battle vs AI Tier " + game.aiTier + "!", "info");
     }, [game, toast]);
-    const playCard = (0, import_react.useCallback)((handIndex) => {
+    const playCard = (0, import_react.useCallback)((hi) => {
       if (!battle || !battle.isPlayerTurn || battle.phase !== "playing") return;
-      const card = battle.playerHand[handIndex];
+      const card = battle.playerHand[hi];
       if (!card) return;
       if (card.cost > battle.playerMana) {
         toast("Not enough mana!", "error");
         return;
       }
       if (battle.playerBoard.length >= MAX_BOARD) {
-        toast("Board is full!", "error");
+        toast("Board full!", "error");
         return;
       }
       const bc = createBattleCard(card);
-      const newBoard = [...battle.playerBoard, bc];
-      const newHand = battle.playerHand.filter((_, i) => i !== handIndex);
-      let newAiBoard = [...battle.aiBoard];
-      let newAiHp = battle.aiHp;
-      let newPlayerHp = battle.playerHp;
+      const nb = [...battle.playerBoard, bc];
+      const nh = battle.playerHand.filter((_, i) => i !== hi);
+      let ab = [...battle.aiBoard];
+      let ahp = battle.aiHp;
       const logs = [];
       if (bc.abilityId === "blast") {
-        newAiBoard = newAiBoard.map((c) => {
-          const dmg = c.shielded ? 0 : 2;
-          if (c.shielded) return { ...c, shielded: false };
-          return { ...c, currentHp: c.currentHp - dmg };
-        }).filter((c) => c.currentHp > 0);
-        logs.push(`${bc.name} blasts all enemies for 2!`);
+        ab = ab.map((c) => c.shielded ? { ...c, shielded: false } : { ...c, currentHp: c.currentHp - 2 }).filter((c) => c.currentHp > 0);
+        logs.push(bc.name + " blasts for 2!");
       }
       if (bc.abilityId === "strike") {
-        if (newAiBoard.length > 0) {
-          const target = Math.floor(Math.random() * newAiBoard.length);
-          const t = newAiBoard[target];
-          const dmg = t.shielded ? 0 : 3;
-          newAiBoard[target] = t.shielded ? { ...t, shielded: false } : { ...t, currentHp: t.currentHp - dmg };
-          newAiBoard = newAiBoard.filter((c) => c.currentHp > 0);
-          logs.push(`${bc.name} strikes ${t.name} for 3!`);
+        if (ab.length > 0) {
+          const ti = Math.floor(Math.random() * ab.length);
+          const t = ab[ti];
+          ab[ti] = t.shielded ? { ...t, shielded: false } : { ...t, currentHp: t.currentHp - 3 };
+          ab = ab.filter((c) => c.currentHp > 0);
+          logs.push(bc.name + " strikes " + t.name + "!");
         } else {
-          newAiHp -= 3;
-          logs.push(`${bc.name} strikes face for 3!`);
+          ahp -= 3;
+          logs.push(bc.name + " strikes face!");
         }
       }
-      if (bc.abilityId === "echo") {
-        logs.push(`${bc.name} draws a card!`);
-      }
-      let newDeck = [...battle.playerDeck];
-      let extraHand = [...newHand];
-      if (bc.abilityId === "echo" && newDeck.length > 0) {
-        extraHand = [...extraHand, newDeck.shift()];
-      }
-      setBattle((b) => ({
-        ...b,
-        playerMana: b.playerMana - card.cost,
-        playerBoard: newBoard,
-        playerHand: extraHand,
-        playerDeck: newDeck,
-        aiBoard: newAiBoard,
-        aiHp: newAiHp,
-        playerHp: newPlayerHp,
-        log: [...b.log, `You play ${card.name} (${card.cost} mana).`, ...logs],
-        phase: newAiHp <= 0 ? "won" : b.phase
-      }));
-      if (newAiHp <= 0) {
-        handleBattleEnd(true);
-      }
+      if (bc.abilityId === "echo") logs.push(bc.name + " draws!");
+      let nd = [...battle.playerDeck];
+      let eh = [...nh];
+      if (bc.abilityId === "echo" && nd.length > 0) eh = [...eh, nd.shift()];
+      setBattle((b) => ({ ...b, playerMana: b.playerMana - card.cost, playerBoard: nb, playerHand: eh, playerDeck: nd, aiBoard: ab, aiHp: ahp, log: [...b.log, "Play " + card.name + ".", ...logs], phase: ahp <= 0 ? "won" : b.phase }));
+      if (ahp <= 0) handleBattleEnd(true);
     }, [battle, toast]);
-    const attackWithCard = (0, import_react.useCallback)((boardIndex, targetIndex) => {
+    const attackWithCard = (0, import_react.useCallback)((bi, ti) => {
       if (!battle || !battle.isPlayerTurn || battle.phase !== "playing") return;
-      const attacker = battle.playerBoard[boardIndex];
-      if (!attacker || attacker.hasAttacked || !attacker.canAttack && attacker.justPlayed) return;
+      const atk = battle.playerBoard[bi];
+      if (!atk || atk.hasAttacked || !atk.canAttack && atk.justPlayed) return;
       const hasTaunt = battle.aiBoard.some((c) => c.abilityId === "taunt");
-      if (targetIndex === -1) {
+      if (ti === -1) {
         if (hasTaunt) {
-          toast("Must attack taunt minion!", "error");
+          toast("Must attack taunt!", "error");
           return;
         }
-        let newAiHp = battle.aiHp - attacker.currentAtk;
-        let heal = 0;
-        if (attacker.abilityId === "drain") {
-          heal = attacker.currentAtk;
-        }
-        const newBoard = battle.playerBoard.map(
-          (c, i) => i === boardIndex ? { ...c, hasAttacked: true } : c
-        );
-        setBattle((b) => ({
-          ...b,
-          aiHp: newAiHp,
-          playerHp: Math.min(STARTING_HP, b.playerHp + heal),
-          playerBoard: newBoard,
-          log: [...b.log, `${attacker.name} attacks face for ${attacker.currentAtk}!${heal ? ` Heals ${heal}.` : ""}`],
-          phase: newAiHp <= 0 ? "won" : b.phase
-        }));
-        if (newAiHp <= 0) handleBattleEnd(true);
+        let hp2 = battle.aiHp - atk.currentAtk;
+        let heal = atk.abilityId === "drain" ? atk.currentAtk : 0;
+        setBattle((b) => ({ ...b, aiHp: hp2, playerHp: Math.min(STARTING_HP, b.playerHp + heal), playerBoard: b.playerBoard.map((c, i) => i === bi ? { ...c, hasAttacked: true } : c), log: [...b.log, atk.name + " attacks face!"], phase: hp2 <= 0 ? "won" : b.phase }));
+        if (hp2 <= 0) handleBattleEnd(true);
       } else {
-        const target = battle.aiBoard[targetIndex];
-        if (!target) return;
-        if (hasTaunt && target.abilityId !== "taunt") {
-          toast("Must attack taunt minion!", "error");
+        const tgt = battle.aiBoard[ti];
+        if (!tgt) return;
+        if (hasTaunt && tgt.abilityId !== "taunt") {
+          toast("Must attack taunt!", "error");
           return;
         }
-        let atkDmg = attacker.currentAtk;
-        let defDmg = target.currentAtk;
-        let targetHp = target.shielded ? target.currentHp : target.currentHp - atkDmg;
-        let attackerHp = attacker.shielded ? attacker.currentHp : attacker.currentHp - defDmg;
-        let targetShielded = false;
-        let attackerShielded = false;
-        if (target.shielded) {
-          targetShielded = false;
-          targetHp = target.currentHp;
-        }
-        if (attacker.shielded) {
-          attackerShielded = false;
-          attackerHp = attacker.currentHp;
-        }
-        let heal = 0;
-        if (attacker.abilityId === "drain" && !target.shielded) {
-          heal = Math.min(atkDmg, target.currentHp);
-        }
-        const newPBoard = battle.playerBoard.map(
-          (c, i) => i === boardIndex ? { ...c, currentHp: attackerHp, hasAttacked: true, shielded: attackerShielded } : c
-        ).filter((c) => c.currentHp > 0);
-        const newABoard = battle.aiBoard.map(
-          (c, i) => i === targetIndex ? { ...c, currentHp: targetHp, shielded: targetShielded } : c
-        ).filter((c) => c.currentHp > 0);
-        setBattle((b) => ({
-          ...b,
-          playerBoard: newPBoard,
-          aiBoard: newABoard,
-          playerHp: Math.min(STARTING_HP, b.playerHp + heal),
-          log: [...b.log, `${attacker.name} attacks ${target.name}!${heal ? ` Heals ${heal}.` : ""}`]
-        }));
+        let th = tgt.shielded ? tgt.currentHp : tgt.currentHp - atk.currentAtk;
+        let ah = atk.shielded ? atk.currentHp : atk.currentHp - tgt.currentAtk;
+        let heal = atk.abilityId === "drain" && !tgt.shielded ? Math.min(atk.currentAtk, tgt.currentHp) : 0;
+        setBattle((b) => ({ ...b, playerBoard: b.playerBoard.map((c, i) => i === bi ? { ...c, currentHp: ah, hasAttacked: true, shielded: false } : c).filter((c) => c.currentHp > 0), aiBoard: b.aiBoard.map((c, i) => i === ti ? { ...c, currentHp: th, shielded: false } : c).filter((c) => c.currentHp > 0), playerHp: Math.min(STARTING_HP, b.playerHp + heal), log: [...b.log, atk.name + " attacks " + tgt.name + "!"] }));
       }
     }, [battle, toast]);
-    const recallCard = (0, import_react.useCallback)((boardIndex) => {
+    const recallCard = (0, import_react.useCallback)((bi) => {
       if (!battle || !battle.isPlayerTurn || battle.phase !== "playing") return;
-      const card = battle.playerBoard[boardIndex];
+      const card = battle.playerBoard[bi];
       if (!card) return;
-      const RECALL_COST = 1;
-      if (battle.playerMana < RECALL_COST) {
-        toast("Need 1 mana to recall!", "error");
+      if (battle.playerMana < 1) {
+        toast("Need 1 mana!", "error");
         return;
       }
       const def = ALL_CARDS.find((c) => c.id === card.id) || card;
-      const handCard = { ...def, uid: uid() };
-      const newBoard = battle.playerBoard.filter((_, i) => i !== boardIndex);
-      setBattle((b) => ({
-        ...b,
-        playerMana: b.playerMana - RECALL_COST,
-        playerBoard: newBoard,
-        playerHand: [...b.playerHand, handCard],
-        log: [...b.log, `You recall ${card.name} to hand. (-${RECALL_COST} mana)`]
-      }));
-      toast(`${card.name} recalled to hand`, "info");
+      setBattle((b) => ({ ...b, playerMana: b.playerMana - 1, playerBoard: b.playerBoard.filter((_, i) => i !== bi), playerHand: [...b.playerHand, { ...def, uid: uid() }], log: [...b.log, "Recall " + card.name + "."] }));
     }, [battle, toast]);
     const handleBattleEnd = (0, import_react.useCallback)((won) => {
       const coins = won ? 50 + game.aiTier * 20 : 10;
-      setGame((g) => ({
-        ...g,
-        coins: g.coins + coins,
-        stats: {
-          wins: g.stats.wins + (won ? 1 : 0),
-          losses: g.stats.losses + (won ? 0 : 1),
-          totalGames: g.stats.totalGames + 1
-        },
-        aiTier: won ? Math.min(g.aiTier + 1, 10) : Math.max(g.aiTier - 1, 1)
-      }));
-      toast(won ? `Victory! +${coins} coins!` : `Defeat. +${coins} coins.`, won ? "success" : "error");
+      setGame((g) => ({ ...g, coins: g.coins + coins, stats: { wins: g.stats.wins + (won ? 1 : 0), losses: g.stats.losses + (won ? 0 : 1), totalGames: g.stats.totalGames + 1 }, aiTier: won ? Math.min(g.aiTier + 1, 10) : Math.max(g.aiTier - 1, 1) }));
+      toast(won ? "Victory! +" + coins + " coins!" : "Defeat. +" + coins + " coins.", won ? "success" : "error");
     }, [game.aiTier, toast]);
     const endTurn = (0, import_react.useCallback)(() => {
       if (!battle || !battle.isPlayerTurn || battle.phase !== "playing") return;
-      let pBoard = battle.playerBoard.map((c) => ({
-        ...c,
-        currentAtk: c.abilityId === "grow" ? c.currentAtk + 1 : c.currentAtk,
-        currentHp: c.abilityId === "grow" ? c.currentHp + 1 : c.abilityId === "regen" ? c.currentHp + 1 : c.currentHp,
-        hasAttacked: false,
-        canAttack: true,
-        justPlayed: false
-      }));
-      setBattle((b) => ({
-        ...b,
-        playerBoard: pBoard,
-        isPlayerTurn: false,
-        log: [...b.log, "You end your turn."]
-      }));
-      aiThinking.current = true;
+      let pb = battle.playerBoard.map((c) => ({ ...c, currentAtk: c.abilityId === "grow" ? c.currentAtk + 1 : c.currentAtk, currentHp: c.abilityId === "grow" ? c.currentHp + 1 : c.abilityId === "regen" ? c.currentHp + 1 : c.currentHp, hasAttacked: false, canAttack: true, justPlayed: false }));
+      setBattle((b) => ({ ...b, playerBoard: pb, isPlayerTurn: false, log: [...b.log, "End turn."] }));
       setTimeout(() => runAITurn(), 800);
     }, [battle]);
     const runAITurn = (0, import_react.useCallback)(() => {
@@ -505,196 +612,86 @@ var CardGameModule = (() => {
         if (!prev || prev.phase !== "playing") return prev;
         let b = { ...prev };
         let log = [...b.log, "AI's turn."];
-        const newMaxMana = Math.min(b.aiMaxMana + 1, MAX_MANA);
-        let aiMana = newMaxMana;
-        let aiHand = [...b.aiHand];
-        let aiDeck = [...b.aiDeck];
-        let aiBoard = [...b.aiBoard];
-        let playerBoard = [...b.playerBoard];
-        let playerHp = b.playerHp;
-        let aiHp = b.aiHp;
-        if (aiDeck.length > 0) {
-          aiHand.push(aiDeck.shift());
-        }
-        const sorted = [...aiHand].sort((a, b2) => b2.cost - a.cost);
+        const nmm = Math.min(b.aiMaxMana + 1, MAX_MANA);
+        let am = nmm;
+        let ah = [...b.aiHand];
+        let ad = [...b.aiDeck];
+        let ab = [...b.aiBoard];
+        let pb = [...b.playerBoard];
+        let php = b.playerHp;
+        let ahp = b.aiHp;
+        if (ad.length > 0) ah.push(ad.shift());
+        const sorted = [...ah].sort((a, b2) => b2.cost - a.cost);
         const played = [];
         for (const card of sorted) {
-          if (card.cost <= aiMana && aiBoard.length < MAX_BOARD) {
-            aiMana -= card.cost;
+          if (card.cost <= am && ab.length < MAX_BOARD) {
+            am -= card.cost;
             const bc = createBattleCard(card);
-            aiBoard.push(bc);
+            ab.push(bc);
             played.push(card);
-            log.push(`AI plays ${card.name}.`);
+            log.push("AI plays " + card.name + ".");
             if (bc.abilityId === "blast") {
-              playerBoard = playerBoard.map((c) => {
-                if (c.shielded) return { ...c, shielded: false };
-                return { ...c, currentHp: c.currentHp - 2 };
-              }).filter((c) => c.currentHp > 0);
-              log.push(`${bc.name} blasts your board for 2!`);
+              pb = pb.map((c) => c.shielded ? { ...c, shielded: false } : { ...c, currentHp: c.currentHp - 2 }).filter((c) => c.currentHp > 0);
             }
             if (bc.abilityId === "strike") {
-              if (playerBoard.length > 0) {
-                const ti = Math.floor(Math.random() * playerBoard.length);
-                const t = playerBoard[ti];
-                if (t.shielded) {
-                  playerBoard[ti] = { ...t, shielded: false };
-                } else {
-                  playerBoard[ti] = { ...t, currentHp: t.currentHp - 3 };
-                }
-                playerBoard = playerBoard.filter((c) => c.currentHp > 0);
-                log.push(`${bc.name} strikes ${t.name} for 3!`);
-              } else {
-                playerHp -= 3;
-                log.push(`${bc.name} strikes your face for 3!`);
-              }
+              if (pb.length > 0) {
+                const ti = Math.floor(Math.random() * pb.length);
+                const t = pb[ti];
+                pb[ti] = t.shielded ? { ...t, shielded: false } : { ...t, currentHp: t.currentHp - 3 };
+                pb = pb.filter((c) => c.currentHp > 0);
+              } else php -= 3;
             }
-            if (bc.abilityId === "echo" && aiDeck.length > 0) {
-              aiHand.push(aiDeck.shift());
-              log.push(`${bc.name} draws a card.`);
-            }
+            if (bc.abilityId === "echo" && ad.length > 0) ah.push(ad.shift());
           }
         }
-        aiHand = aiHand.filter((c) => !played.some((p) => p.uid === c.uid));
-        for (let i = 0; i < aiBoard.length; i++) {
-          const c = aiBoard[i];
+        ah = ah.filter((c) => !played.some((p) => p.uid === c.uid));
+        for (let i = 0; i < ab.length; i++) {
+          const c = ab[i];
           if (c.hasAttacked || !c.canAttack && c.justPlayed) continue;
-          const hasTaunt = playerBoard.some((pc) => pc.abilityId === "taunt");
-          if (hasTaunt) {
-            const tauntIdx = playerBoard.findIndex((pc) => pc.abilityId === "taunt");
-            if (tauntIdx !== -1) {
-              const t = playerBoard[tauntIdx];
-              const tHp = t.shielded ? t.currentHp : t.currentHp - c.currentAtk;
-              const cHp = c.shielded ? c.currentHp : c.currentHp - t.currentAtk;
-              playerBoard[tauntIdx] = { ...t, currentHp: tHp, shielded: t.shielded ? false : t.shielded };
-              aiBoard[i] = { ...c, currentHp: cHp, hasAttacked: true, shielded: c.shielded ? false : c.shielded };
-              if (c.abilityId === "drain" && !t.shielded) aiHp = Math.min(STARTING_HP, aiHp + Math.min(c.currentAtk, t.currentHp));
-              log.push(`AI's ${c.name} attacks ${t.name}.`);
+          const ht = pb.some((pc) => pc.abilityId === "taunt");
+          if (ht) {
+            const ti = pb.findIndex((pc) => pc.abilityId === "taunt");
+            if (ti !== -1) {
+              const t = pb[ti];
+              pb[ti] = { ...t, currentHp: t.shielded ? t.currentHp : t.currentHp - c.currentAtk, shielded: false };
+              ab[i] = { ...c, currentHp: c.shielded ? c.currentHp : c.currentHp - t.currentAtk, hasAttacked: true, shielded: false };
+              if (c.abilityId === "drain" && !t.shielded) ahp = Math.min(STARTING_HP, ahp + Math.min(c.currentAtk, t.currentHp));
             }
-          } else if (playerBoard.length > 0 && Math.random() > 0.3) {
-            const ti = Math.floor(Math.random() * playerBoard.length);
-            const t = playerBoard[ti];
-            const tHp = t.shielded ? t.currentHp : t.currentHp - c.currentAtk;
-            const cHp = c.shielded ? c.currentHp : c.currentHp - t.currentAtk;
-            playerBoard[ti] = { ...t, currentHp: tHp, shielded: t.shielded ? false : t.shielded };
-            aiBoard[i] = { ...c, currentHp: cHp, hasAttacked: true, shielded: c.shielded ? false : c.shielded };
-            if (c.abilityId === "drain" && !t.shielded) aiHp = Math.min(STARTING_HP, aiHp + Math.min(c.currentAtk, t.currentHp));
-            log.push(`AI's ${c.name} attacks ${t.name}.`);
+          } else if (pb.length > 0 && Math.random() > 0.3) {
+            const ti = Math.floor(Math.random() * pb.length);
+            const t = pb[ti];
+            pb[ti] = { ...t, currentHp: t.shielded ? t.currentHp : t.currentHp - c.currentAtk, shielded: false };
+            ab[i] = { ...c, currentHp: c.shielded ? c.currentHp : c.currentHp - t.currentAtk, hasAttacked: true, shielded: false };
+            if (c.abilityId === "drain" && !t.shielded) ahp = Math.min(STARTING_HP, ahp + Math.min(c.currentAtk, t.currentHp));
           } else {
-            playerHp -= c.currentAtk;
-            let heal = 0;
-            if (c.abilityId === "drain") {
-              heal = c.currentAtk;
-              aiHp = Math.min(STARTING_HP, aiHp + heal);
-            }
-            aiBoard[i] = { ...c, hasAttacked: true };
-            log.push(`AI's ${c.name} attacks your face for ${c.currentAtk}!${heal ? ` Heals ${heal}.` : ""}`);
+            php -= c.currentAtk;
+            if (c.abilityId === "drain") ahp = Math.min(STARTING_HP, ahp + c.currentAtk);
+            ab[i] = { ...c, hasAttacked: true };
           }
         }
-        aiBoard = aiBoard.filter((c) => c.currentHp > 0);
-        playerBoard = playerBoard.filter((c) => c.currentHp > 0);
-        aiBoard = aiBoard.map((c) => ({
-          ...c,
-          currentAtk: c.abilityId === "grow" ? c.currentAtk + 1 : c.currentAtk,
-          currentHp: c.abilityId === "grow" ? c.currentHp + 1 : c.abilityId === "regen" ? c.currentHp + 1 : c.currentHp,
-          hasAttacked: false,
-          canAttack: true,
-          justPlayed: false
-        }));
-        const newPMaxMana = Math.min(b.playerMaxMana + 1, MAX_MANA);
-        let pDeck = [...b.playerDeck];
-        let pHand = [...b.playerHand];
-        if (pDeck.length > 0) pHand.push(pDeck.shift());
-        const phase = playerHp <= 0 ? "lost" : aiHp <= 0 ? "won" : "playing";
-        log.push("Your turn. Draw a card.");
-        aiThinking.current = false;
-        return {
-          ...b,
-          playerHp,
-          aiHp,
-          playerBoard,
-          aiBoard,
-          aiHand,
-          aiDeck,
-          aiMaxMana: newMaxMana,
-          aiMana,
-          playerMaxMana: newPMaxMana,
-          playerMana: newPMaxMana,
-          playerHand: pHand,
-          playerDeck: pDeck,
-          turn: b.turn + 1,
-          isPlayerTurn: true,
-          phase,
-          log
-        };
+        ab = ab.filter((c) => c.currentHp > 0);
+        pb = pb.filter((c) => c.currentHp > 0);
+        ab = ab.map((c) => ({ ...c, currentAtk: c.abilityId === "grow" ? c.currentAtk + 1 : c.currentAtk, currentHp: c.abilityId === "grow" ? c.currentHp + 1 : c.abilityId === "regen" ? c.currentHp + 1 : c.currentHp, hasAttacked: false, canAttack: true, justPlayed: false }));
+        const npm = Math.min(b.playerMaxMana + 1, MAX_MANA);
+        let pd = [...b.playerDeck];
+        let phand = [...b.playerHand];
+        if (pd.length > 0) phand.push(pd.shift());
+        return { ...b, playerHp: php, aiHp: ahp, playerBoard: pb, aiBoard: ab, aiHand: ah, aiDeck: ad, aiMaxMana: nmm, aiMana: am, playerMaxMana: npm, playerMana: npm, playerHand: phand, playerDeck: pd, turn: b.turn + 1, isPlayerTurn: true, phase: php <= 0 ? "lost" : ahp <= 0 ? "won" : "playing", log: [...log, "Your turn."] };
       });
     }, []);
     (0, import_react.useEffect)(() => {
-      if (battle && (battle.phase === "won" || battle.phase === "lost") && battle.log.length > 0) {
-        if (battle.phase === "won" && !battle._ended) {
-          handleBattleEnd(true);
-          setBattle((b) => b ? { ...b, _ended: true } : b);
-        } else if (battle.phase === "lost" && !battle._ended) {
-          handleBattleEnd(false);
-          setBattle((b) => b ? { ...b, _ended: true } : b);
-        }
+      if (battle && (battle.phase === "won" || battle.phase === "lost") && !battle._ended) {
+        handleBattleEnd(battle.phase === "won");
+        setBattle((b) => b ? { ...b, _ended: true } : b);
       }
     }, [battle?.phase]);
-    const isDark = true;
     const S = (0, import_react.useMemo)(() => ({
-      app: {
-        maxWidth: 420,
-        margin: "0 auto",
-        minHeight: "100vh",
-        fontFamily: '"Anthropic Sans", system-ui, sans-serif',
-        color: "var(--color-text-primary, #e8e6df)",
-        background: "var(--color-background-tertiary, #1a1a1e)",
-        position: "relative",
-        overflow: "hidden"
-      },
-      topBar: {
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "12px 16px",
-        borderBottom: "0.5px solid var(--color-border-tertiary, #333)",
-        background: "var(--color-background-primary, #232327)"
-      },
-      content: {
-        padding: "12px 16px",
-        minHeight: "calc(100vh - 120px)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 12
-      },
-      nav: {
-        display: "flex",
-        justifyContent: "space-around",
-        alignItems: "center",
-        padding: "10px 0",
-        borderTop: "0.5px solid var(--color-border-tertiary, #333)",
-        background: "var(--color-background-primary, #232327)",
-        position: "sticky",
-        bottom: 0
-      },
-      navItem: (active) => ({
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 2,
-        fontSize: 10,
-        cursor: "pointer",
-        userSelect: "none",
-        color: active ? "#AFA9EC" : "var(--color-text-tertiary, #777)",
-        fontWeight: active ? 600 : 400,
-        transition: "color .15s"
-      }),
-      card: {
-        background: "var(--color-background-primary, #232327)",
-        borderRadius: 12,
-        padding: "14px 16px",
-        border: "0.5px solid var(--color-border-tertiary, #333)"
-      },
-      btn: (variant) => ({
+      app: { maxWidth: 420, margin: "0 auto", minHeight: "100vh", fontFamily: '"Anthropic Sans",system-ui,sans-serif', color: "#e8e6df", background: "#1a1a1e", position: "relative", overflow: "hidden" },
+      content: { padding: "12px 16px", minHeight: "calc(100vh - 56px)", display: "flex", flexDirection: "column", gap: 12 },
+      nav: { display: "flex", justifyContent: "space-around", alignItems: "center", padding: "10px 0", borderTop: "0.5px solid #333", background: "#232327", position: "sticky", bottom: 0 },
+      navItem: (a) => ({ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, fontSize: 10, cursor: "pointer", userSelect: "none", color: a ? "#AFA9EC" : "#777", fontWeight: a ? 600 : 400 }),
+      card: { background: "#232327", borderRadius: 12, padding: "14px 16px", border: "0.5px solid #333" },
+      btn: (v) => ({
         padding: "10px 16px",
         borderRadius: 8,
         border: "none",
@@ -702,79 +699,37 @@ var CardGameModule = (() => {
         fontWeight: 500,
         fontSize: 13,
         textAlign: "center",
-        transition: "all .15s",
-        ...variant === "primary" ? { background: "#7F77DD", color: "#fff" } : variant === "gold" ? { background: "#EF9F27", color: "#fff" } : variant === "danger" ? { background: "#E24B4A", color: "#fff" } : { background: "var(--color-background-secondary, #2c2c30)", color: "var(--color-text-primary, #e8e6df)" }
+        ...v === "primary" ? { background: "#7F77DD", color: "#fff" } : v === "gold" ? { background: "#EF9F27", color: "#fff" } : v === "danger" ? { background: "#E24B4A", color: "#fff" } : v === "success" ? { background: "#1D9E75", color: "#fff" } : { background: "#2c2c30", color: "#e8e6df" }
       }),
-      miniCard: (rarity, selected) => ({
-        width: 64,
-        minHeight: 88,
-        borderRadius: 8,
-        padding: "6px 4px",
-        border: `${selected ? 2 : rarity === "legendary" ? 1.5 : 0.5}px solid ${selected ? "#AFA9EC" : rarity === "legendary" ? "#FAC775" : rarity === "epic" ? "#AFA9EC" : rarity === "rare" ? "#5DCAA5" : "var(--color-border-tertiary, #333)"}`,
-        background: selected ? "#26215C" : "var(--color-background-primary, #232327)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 2,
-        cursor: "pointer",
-        position: "relative",
-        transition: "all .15s",
-        flexShrink: 0,
-        fontSize: 9,
-        color: "var(--color-text-primary, #e8e6df)"
-      }),
-      badge: (rarity) => ({
-        display: "inline-block",
-        padding: "2px 8px",
-        borderRadius: 8,
-        fontSize: 10,
-        fontWeight: 500,
-        background: RARITIES[rarity]?.darkBg,
-        color: RARITIES[rarity]?.color
-      })
-    }), [isDark]);
+      miniCard: (r, s) => ({ width: 64, minHeight: 88, borderRadius: 8, padding: "6px 4px", border: (s ? 2 : r === "legendary" ? 1.5 : 0.5) + "px solid " + (s ? "#AFA9EC" : r === "legendary" ? "#FAC775" : r === "epic" ? "#AFA9EC" : r === "rare" ? "#5DCAA5" : "#333"), background: s ? "#26215C" : "#232327", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, cursor: "pointer", position: "relative", flexShrink: 0, fontSize: 9, color: "#e8e6df" }),
+      badge: (r) => ({ display: "inline-block", padding: "2px 8px", borderRadius: 8, fontSize: 10, fontWeight: 500, background: RARITIES[r]?.darkBg, color: RARITIES[r]?.color }),
+      input: { padding: "10px 12px", borderRadius: 8, border: "0.5px solid #333", background: "#2c2c30", color: "#e8e6df", fontSize: 13, outline: "none", width: "100%" }
+    }), []);
     const ShapeIcon = ({ shape, color, size = 24 }) => /* @__PURE__ */ React.createElement("svg", { width: size, height: size, viewBox: "0 0 32 32" }, SHAPES[shape]?.(color) || SHAPES.circle(color));
     const MiniCard = ({ cardDef, onClick, selected, showStats, battleCard }) => {
       const c = battleCard || cardDef;
       const r = RARITIES[cardDef.rarity];
       const ab = getAbility(cardDef.abilityId);
-      return /* @__PURE__ */ React.createElement("div", { style: S.miniCard(cardDef.rarity, selected), onClick, title: ab.desc ? `${ab.name}: ${ab.desc}` : cardDef.name }, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 3, left: 5, fontSize: 9, color: "#378ADD", fontWeight: 600 } }, c.cost || cardDef.cost), battleCard?.shielded && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 2, right: 4, fontSize: 8, color: "#378ADD" } }, "\u25C8"), /* @__PURE__ */ React.createElement(ShapeIcon, { shape: cardDef.shape, color: r.color, size: 22 }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8, fontWeight: 500, textAlign: "center", lineHeight: 1.1, maxWidth: 56, overflow: "hidden" } }, cardDef.name), ab.id !== "none" && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 7, color: r.color, fontWeight: 500 } }, ab.name), showStats !== false && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", width: "100%", padding: "0 4px" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#EF9F27", fontWeight: 600 } }, battleCard ? c.currentAtk : cardDef.atk), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#E24B4A", fontWeight: 600 } }, battleCard ? c.currentHp : cardDef.hp)));
+      return /* @__PURE__ */ React.createElement("div", { style: S.miniCard(cardDef.rarity, selected), onClick, title: ab.desc || cardDef.name }, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 3, left: 5, fontSize: 9, color: "#378ADD", fontWeight: 600 } }, c.cost || cardDef.cost), battleCard?.shielded && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 2, right: 4, fontSize: 8, color: "#378ADD" } }, "\u25C8"), /* @__PURE__ */ React.createElement(ShapeIcon, { shape: cardDef.shape, color: r.color, size: 22 }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8, fontWeight: 500, textAlign: "center", lineHeight: 1.1, maxWidth: 56, overflow: "hidden" } }, cardDef.name), ab.id !== "none" && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 7, color: r.color, fontWeight: 500 } }, ab.name), showStats !== false && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", width: "100%", padding: "0 4px" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#EF9F27", fontWeight: 600 } }, battleCard ? c.currentAtk : cardDef.atk), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#E24B4A", fontWeight: 600 } }, battleCard ? c.currentHp : cardDef.hp)));
     };
-    const Toasts = () => /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 999, display: "flex", flexDirection: "column", gap: 6, maxWidth: 380, width: "90%" } }, toasts.map((t) => /* @__PURE__ */ React.createElement("div", { key: t.id, style: {
-      padding: "10px 16px",
-      borderRadius: 10,
-      fontSize: 13,
-      fontWeight: 500,
-      background: t.type === "error" ? "#E24B4A" : t.type === "success" ? "#1D9E75" : "#7F77DD",
-      color: "#fff",
-      animation: "slideDown .3s ease",
-      boxShadow: "0 4px 12px rgba(0,0,0,.15)"
-    } }, t.msg)));
+    const Toasts = () => /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 999, display: "flex", flexDirection: "column", gap: 6, maxWidth: 380, width: "90%" } }, toasts.map((t) => /* @__PURE__ */ React.createElement("div", { key: t.id, style: { padding: "10px 16px", borderRadius: 10, fontSize: 13, fontWeight: 500, background: t.type === "error" ? "#E24B4A" : t.type === "success" ? "#1D9E75" : "#7F77DD", color: "#fff", animation: "slideDown .3s ease", boxShadow: "0 4px 12px rgba(0,0,0,.15)" } }, t.msg)));
+    const AuthScreenUI = () => /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "24px 0 8px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600, letterSpacing: 2 } }, "DECK"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777", marginTop: 2 } }, authScreen === "register" ? "Create Account" : "Log In")), authError && /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 12px", borderRadius: 8, background: "#501313", color: "#F09595", fontSize: 12 } }, authError), authScreen === "register" && /* @__PURE__ */ React.createElement("input", { style: S.input, placeholder: "Username", value: authUsername, onChange: (e) => setAuthUsername(e.target.value), maxLength: 16 }), /* @__PURE__ */ React.createElement("input", { style: S.input, placeholder: "Email", type: "email", value: authEmail, onChange: (e) => setAuthEmail(e.target.value) }), /* @__PURE__ */ React.createElement("input", { style: S.input, placeholder: "Password", type: "password", value: authPass, onChange: (e) => setAuthPass(e.target.value) }), /* @__PURE__ */ React.createElement("button", { style: S.btn("primary"), onClick: authScreen === "register" ? handleRegister : handleLogin, disabled: authLoading }, authLoading ? "Loading..." : authScreen === "register" ? "Create Account" : "Log In"), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontSize: 12, color: "#777" } }, authScreen === "register" ? /* @__PURE__ */ React.createElement("span", null, "Have an account? ", /* @__PURE__ */ React.createElement("span", { style: { color: "#AFA9EC", cursor: "pointer" }, onClick: () => {
+      setAuthScreen("login");
+      setAuthError("");
+    } }, "Log in")) : /* @__PURE__ */ React.createElement("span", null, "Need an account? ", /* @__PURE__ */ React.createElement("span", { style: { color: "#AFA9EC", cursor: "pointer" }, onClick: () => {
+      setAuthScreen("register");
+      setAuthError("");
+    } }, "Sign up"))), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), marginTop: 8 }, onClick: () => setAuthScreen(null) }, "Play Offline"));
     const HomeScreen = () => {
       const wr = game.stats.totalGames > 0 ? Math.round(game.stats.wins / game.stats.totalGames * 100) : 0;
-      const collected = new Set(game.collection).size;
-      return /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "16px 0 8px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600, letterSpacing: 2, textTransform: "uppercase" } }, "Deck"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--color-text-tertiary, #999)", marginTop: 2 } }, "v1.0.0")), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--color-text-tertiary)" } }, "Cards collected"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600 } }, collected, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--color-text-tertiary)" } }, "/", ALL_CARDS.length))), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--color-text-tertiary)" } }, "Win rate"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600 } }, wr, "%")), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--color-text-tertiary)" } }, "AI Tier"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 18, fontWeight: 600 } }, "Tier ", game.aiTier), /* @__PURE__ */ React.createElement("div", { style: { height: 4, borderRadius: 2, background: "var(--color-background-secondary)", marginTop: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { height: 4, borderRadius: 2, background: "#7F77DD", width: `${game.aiTier * 10}%`, transition: "width .3s" } }))), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--color-text-tertiary)" } }, "Coins"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 18, fontWeight: 600, color: "#EF9F27" } }, game.coins.toLocaleString()))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--color-text-tertiary)" } }, "Record"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 500 } }, game.stats.wins, "W \xB7 ", game.stats.losses, "L")), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--color-text-tertiary)" } }, "Games played"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 500 } }, game.stats.totalGames))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8 } }, /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), flex: 1 }, onClick: startBattle }, "Battle AI"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("gold"), flex: 1 }, onClick: () => setScreen("packs") }, "Open Packs")));
+      const col = new Set(game.collection).size;
+      return /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "16px 0 8px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600, letterSpacing: 2 } }, "DECK"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777", marginTop: 2 } }, "v", VERSION), user && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#AFA9EC", marginTop: 4 } }, username)), !user && /* @__PURE__ */ React.createElement("div", { style: { ...S.card, textAlign: "center", padding: "10px 16px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777", marginBottom: 6 } }, "Log in for multiplayer and cloud saves"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), flex: 1, fontSize: 11, padding: "8px" }, onClick: () => setAuthScreen("login") }, "Log In"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), flex: 1, fontSize: 11, padding: "8px" }, onClick: () => setAuthScreen("register") }, "Sign Up"))), battleRequests.filter((r) => r.status === "pending").length > 0 && /* @__PURE__ */ React.createElement("div", { style: { ...S.card, border: "1px solid #7F77DD" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "#AFA9EC", marginBottom: 6 } }, "Battle Requests"), battleRequests.filter((r) => r.status === "pending").map((req) => /* @__PURE__ */ React.createElement("div", { key: req.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12 } }, req.fromUsername), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("success"), fontSize: 10, padding: "4px 10px" }, onClick: () => acceptBattleReq(req) }, "Accept"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), fontSize: 10, padding: "4px 10px" }, onClick: () => declineBattleReq(req) }, "Decline"))))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "Cards"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600 } }, col, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "#777" } }, "/", ALL_CARDS.length))), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "Win rate"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600 } }, wr, "%")), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "AI Tier"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 18, fontWeight: 600 } }, "Tier ", game.aiTier), /* @__PURE__ */ React.createElement("div", { style: { height: 4, borderRadius: 2, background: "#2c2c30", marginTop: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { height: 4, borderRadius: 2, background: "#7F77DD", width: game.aiTier * 10 + "%" } }))), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "Record"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 500 } }, game.stats.wins, "W \xB7 ", game.stats.losses, "L"))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8 } }, /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), flex: 1 }, onClick: startBattle }, "Battle AI"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("gold"), flex: 1 }, onClick: () => setScreen("packs") }, "Open Packs")), user && /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), fontSize: 11, marginTop: 4 }, onClick: handleLogout }, "Log Out"));
     };
-    const PackScreen = () => /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600 } }, "Pack Shop"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--color-text-secondary)" } }, "Coins: ", /* @__PURE__ */ React.createElement("span", { style: { color: "#EF9F27", fontWeight: 600 } }, game.coins)), !packCards ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { ...S.card, textAlign: "center", padding: "32px 16px" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 100, height: 130, margin: "0 auto", borderRadius: 12, border: "2px solid #7F77DD", background: "#26215C", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 36, height: 36, borderRadius: "50%", border: "2px solid #7F77DD", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: "#7F77DD" } }, "?"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, fontWeight: 600, color: "#7F77DD" } }, "5 Cards")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 500, marginTop: 12 } }, "Standard Pack"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--color-text-tertiary)" } }, "1 guaranteed Rare or better")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("gold"), flex: 1 }, onClick: () => handleOpenPack(false) }, "Open \xB7 100 coins"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), flex: 1 }, onClick: () => handleOpenPack(true) }, "Premium \xB7 200"))) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 500, textAlign: "center" } }, "Tap cards to reveal!"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", padding: "8px 0" } }, packCards.map((card, i) => {
-      const revealed = revealedCards.includes(i);
+    const PackScreen = () => /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600 } }, "Pack Shop"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#777" } }, "Coins: ", /* @__PURE__ */ React.createElement("span", { style: { color: "#EF9F27", fontWeight: 600 } }, game.coins)), !packCards ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { ...S.card, textAlign: "center", padding: "32px 16px" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 100, height: 130, margin: "0 auto", borderRadius: 12, border: "2px solid #7F77DD", background: "#26215C", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 36, height: 36, borderRadius: "50%", border: "2px solid #7F77DD", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: "#7F77DD" } }, "?"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, fontWeight: 600, color: "#7F77DD" } }, "5 Cards")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 500, marginTop: 12 } }, "Standard Pack"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "1 guaranteed Rare+")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("gold"), flex: 1 }, onClick: () => handleOpenPack(false) }, "100 coins"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), flex: 1 }, onClick: () => handleOpenPack(true) }, "Premium \xB7 200"))) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 500, textAlign: "center" } }, "Tap to reveal!"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", padding: "8px 0" } }, packCards.map((card, i) => {
+      const rev = revealedCards.includes(i);
       const r = RARITIES[card.rarity];
-      return /* @__PURE__ */ React.createElement("div", { key: i, onClick: () => revealCard(i), style: {
-        width: 72,
-        height: 100,
-        borderRadius: 10,
-        cursor: "pointer",
-        border: `1.5px solid ${revealed ? r.color : "#7F77DD"}`,
-        background: revealed ? r.darkBg : "#26215C",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 4,
-        transition: "all .4s",
-        transform: revealed ? "rotateY(0deg) scale(1.05)" : "rotateY(0deg)"
-      } }, revealed ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(ShapeIcon, { shape: card.shape, color: r.color, size: 24 }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, fontWeight: 600 } }, card.name), /* @__PURE__ */ React.createElement("div", { style: S.badge(card.rarity) }, r.label), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, fontSize: 9 } }, /* @__PURE__ */ React.createElement("span", { style: { color: "#EF9F27" } }, card.atk), /* @__PURE__ */ React.createElement("span", { style: { color: "#E24B4A" } }, card.hp))) : /* @__PURE__ */ React.createElement("div", { style: { fontSize: 24, color: "#7F77DD" } }, "?"));
-    })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, revealedCards.length < 5 && /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), flex: 1 }, onClick: revealAll }, "Reveal All"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), flex: 1 }, onClick: () => {
+      return /* @__PURE__ */ React.createElement("div", { key: i, onClick: () => revealCard(i), style: { width: 72, height: 100, borderRadius: 10, cursor: "pointer", border: "1.5px solid " + (rev ? r.color : "#7F77DD"), background: rev ? r.darkBg : "#26215C", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 } }, rev ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(ShapeIcon, { shape: card.shape, color: r.color, size: 24 }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, fontWeight: 600 } }, card.name), /* @__PURE__ */ React.createElement("div", { style: S.badge(card.rarity) }, r.label), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, fontSize: 9 } }, /* @__PURE__ */ React.createElement("span", { style: { color: "#EF9F27" } }, card.atk), /* @__PURE__ */ React.createElement("span", { style: { color: "#E24B4A" } }, card.hp))) : /* @__PURE__ */ React.createElement("div", { style: { fontSize: 24, color: "#7F77DD" } }, "?"));
+    })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, revealedCards.length < 5 && /* @__PURE__ */ React.createElement("button", { style: S.btn(), onClick: revealAll }, "Reveal All"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), flex: 1 }, onClick: () => {
       setPackCards(null);
       setRevealedCards([]);
     } }, revealedCards.length === 5 ? "Done" : "Skip"))));
@@ -782,124 +737,76 @@ var CardGameModule = (() => {
       const [filter, setFilter] = (0, import_react.useState)("all");
       const owned = new Set(game.collection);
       const filtered = ALL_CARDS.filter((c) => owned.has(c.id) && (filter === "all" || c.rarity === filter));
-      return /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600 } }, "Collection"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--color-text-tertiary)" } }, owned.size, "/", ALL_CARDS.length)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, flexWrap: "wrap" } }, ["all", "common", "rare", "epic", "legendary"].map((f) => /* @__PURE__ */ React.createElement("button", { key: f, onClick: () => setFilter(f), style: {
-        ...S.badge(f === "all" ? "common" : f),
-        cursor: "pointer",
-        border: "none",
-        opacity: filter === f ? 1 : 0.5,
-        transition: "opacity .15s"
-      } }, f === "all" ? "All" : RARITIES[f].label))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(68px, 1fr))", gap: 6 } }, filtered.map((c) => /* @__PURE__ */ React.createElement(MiniCard, { key: c.id, cardDef: c, onClick: () => {
-      } }))), filtered.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 24, fontSize: 13, color: "var(--color-text-tertiary)" } }, "No cards found"));
+      return /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600 } }, "Collection"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777" } }, owned.size, "/", ALL_CARDS.length)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, flexWrap: "wrap" } }, ["all", "common", "rare", "epic", "legendary"].map((f) => /* @__PURE__ */ React.createElement("button", { key: f, onClick: () => setFilter(f), style: { ...S.badge(f === "all" ? "common" : f), cursor: "pointer", border: "none", opacity: filter === f ? 1 : 0.5 } }, f === "all" ? "All" : RARITIES[f].label))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(68px,1fr))", gap: 6 } }, filtered.map((c) => /* @__PURE__ */ React.createElement(MiniCard, { key: c.id, cardDef: c, onClick: () => {
+      } }))), filtered.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 24, fontSize: 13, color: "#777" } }, "No cards"));
     };
-    const DecksScreen = () => /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600 } }, "Decks"), /* @__PURE__ */ React.createElement("button", { style: S.btn("primary"), onClick: () => startDeckEdit(null) }, "+ New Deck")), game.decks.map((d) => /* @__PURE__ */ React.createElement("div", { key: d.id, style: { ...S.card, display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 500 } }, d.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--color-text-tertiary)" } }, d.cardIds.length, "/", DECK_SIZE, " cards")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement("button", { style: S.btn(game.activeDeckId === d.id ? "primary" : void 0), onClick: () => setGame((g) => ({ ...g, activeDeckId: d.id })) }, game.activeDeckId === d.id ? "Active" : "Use"), /* @__PURE__ */ React.createElement("button", { style: S.btn(), onClick: () => startDeckEdit(d.id) }, "Edit")))), game.decks.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 24, fontSize: 13, color: "var(--color-text-tertiary)" } }, "No decks yet. Create one!"));
+    const DecksScreen = () => /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600 } }, "Decks"), /* @__PURE__ */ React.createElement("button", { style: S.btn("primary"), onClick: () => startDeckEdit(null) }, "+ New")), game.decks.map((d) => /* @__PURE__ */ React.createElement("div", { key: d.id, style: { ...S.card, display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 500 } }, d.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777" } }, d.cardIds.length, "/", DECK_SIZE)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement("button", { style: S.btn(game.activeDeckId === d.id ? "primary" : void 0), onClick: () => setGame((g) => ({ ...g, activeDeckId: d.id })) }, game.activeDeckId === d.id ? "Active" : "Use"), /* @__PURE__ */ React.createElement("button", { style: S.btn(), onClick: () => startDeckEdit(d.id) }, "Edit")))));
     const DeckBuilder = () => {
-      const [builderFilter, setBuilderFilter] = (0, import_react.useState)("all");
+      const [bf, setBf] = (0, import_react.useState)("all");
       const owned = new Set(game.collection);
-      const available = ALL_CARDS.filter((c) => owned.has(c.id) && (builderFilter === "all" || c.rarity === builderFilter)).sort((a, b) => a.cost - b.cost);
-      const deckCards = deckBuilderCards.map((id) => ALL_CARDS.find((c) => c.id === id)).filter(Boolean);
-      return /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("button", { style: S.btn(), onClick: () => setScreen("decks") }, "\u2190 Back"), /* @__PURE__ */ React.createElement(
-        "input",
-        {
-          value: deckName,
-          onChange: (e) => setDeckName(e.target.value),
-          style: {
-            fontSize: 14,
-            fontWeight: 500,
-            border: "none",
-            background: "transparent",
-            textAlign: "center",
-            color: "var(--color-text-primary)",
-            outline: "none",
-            width: 120
-          }
-        }
-      ), /* @__PURE__ */ React.createElement("button", { style: S.btn("primary"), onClick: saveDeck }, "Save")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--color-text-tertiary)", textAlign: "center" } }, deckBuilderCards.length, "/", DECK_SIZE, " cards"), /* @__PURE__ */ React.createElement("div", { style: { ...S.card, padding: "8px 12px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, fontWeight: 500, marginBottom: 6 } }, "Deck"), deckCards.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "var(--color-text-tertiary)", textAlign: "center", padding: 8 } }, "Add cards from below") : /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 4 } }, deckCards.map((c, i) => /* @__PURE__ */ React.createElement("div", { key: i, onClick: () => removeFromDeck(i), style: {
-        padding: "3px 8px",
-        borderRadius: 6,
-        fontSize: 10,
-        fontWeight: 500,
-        cursor: "pointer",
-        background: RARITIES[c.rarity].darkBg,
-        color: RARITIES[c.rarity].color,
-        border: `0.5px solid ${RARITIES[c.rarity].color}`
-      }, title: "Click to remove" }, c.cost, "\u2B21 ", c.name)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, ["all", "common", "rare", "epic", "legendary"].map((f) => /* @__PURE__ */ React.createElement("button", { key: f, onClick: () => setBuilderFilter(f), style: {
-        ...S.badge(f === "all" ? "common" : f),
-        cursor: "pointer",
-        border: "none",
-        opacity: builderFilter === f ? 1 : 0.5
-      } }, f === "all" ? "All" : RARITIES[f].label))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(68px, 1fr))", gap: 6 } }, available.map((c) => {
-        const count = deckBuilderCards.filter((id) => id === c.id).length;
-        return /* @__PURE__ */ React.createElement("div", { key: c.id, style: { position: "relative" } }, /* @__PURE__ */ React.createElement(MiniCard, { cardDef: c, onClick: () => addToDeck(c.id), selected: count > 0 }), count > 0 && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: -4, right: -4, width: 16, height: 16, borderRadius: "50%", background: "#7F77DD", color: "#fff", fontSize: 9, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" } }, count));
+      const avail = ALL_CARDS.filter((c) => owned.has(c.id) && (bf === "all" || c.rarity === bf)).sort((a, b) => a.cost - b.cost);
+      const dc = deckBuilderCards.map((id) => ALL_CARDS.find((c) => c.id === id)).filter(Boolean);
+      return /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("button", { style: S.btn(), onClick: () => setScreen("decks") }, "\u2190 Back"), /* @__PURE__ */ React.createElement("input", { value: deckName, onChange: (e) => setDeckName(e.target.value), style: { ...S.input, width: 120, textAlign: "center" } }), /* @__PURE__ */ React.createElement("button", { style: S.btn("primary"), onClick: saveDeck }, "Save")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777", textAlign: "center" } }, deckBuilderCards.length, "/", DECK_SIZE), /* @__PURE__ */ React.createElement("div", { style: { ...S.card, padding: "8px 12px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, fontWeight: 500, marginBottom: 6 } }, "Deck"), dc.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777", textAlign: "center", padding: 8 } }, "Add cards below") : /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 4 } }, dc.map((c, i) => /* @__PURE__ */ React.createElement("div", { key: i, onClick: () => removeFromDeck(i), style: { padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 500, cursor: "pointer", background: RARITIES[c.rarity].darkBg, color: RARITIES[c.rarity].color, border: "0.5px solid " + RARITIES[c.rarity].color } }, c.cost, "\u2B21 ", c.name)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, ["all", "common", "rare", "epic", "legendary"].map((f) => /* @__PURE__ */ React.createElement("button", { key: f, onClick: () => setBf(f), style: { ...S.badge(f === "all" ? "common" : f), cursor: "pointer", border: "none", opacity: bf === f ? 1 : 0.5 } }, f === "all" ? "All" : RARITIES[f].label))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(68px,1fr))", gap: 6 } }, avail.map((c) => {
+        const cnt = deckBuilderCards.filter((id) => id === c.id).length;
+        return /* @__PURE__ */ React.createElement("div", { key: c.id, style: { position: "relative" } }, /* @__PURE__ */ React.createElement(MiniCard, { cardDef: c, onClick: () => addToDeck(c.id), selected: cnt > 0 }), cnt > 0 && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: -4, right: -4, width: 16, height: 16, borderRadius: "50%", background: "#7F77DD", color: "#fff", fontSize: 9, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" } }, cnt));
       })));
     };
     const BattleScreen = () => {
-      const [selectedHand, setSelectedHand] = (0, import_react.useState)(null);
-      const [attackMode, setAttackMode] = (0, import_react.useState)(null);
+      const [atk, setAtk] = (0, import_react.useState)(null);
       const logRef = (0, import_react.useRef)(null);
       (0, import_react.useEffect)(() => {
         if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
       }, [battle?.log]);
       if (!battle) return null;
-      const isOver = battle.phase === "won" || battle.phase === "lost";
-      return /* @__PURE__ */ React.createElement("div", { style: { ...S.content, gap: 6, padding: "8px 12px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("span", { style: { color: "var(--color-text-tertiary)" } }, "AI Tier ", game.aiTier), /* @__PURE__ */ React.createElement("span", { style: { marginLeft: 8, fontSize: 10, color: "var(--color-text-tertiary)" } }, "Cards: ", battle.aiHand.length + battle.aiDeck.length)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { color: "#E24B4A", fontSize: 10 } }, "HP"), /* @__PURE__ */ React.createElement("div", { style: { width: 60, height: 6, borderRadius: 3, background: "var(--color-background-secondary)" } }, /* @__PURE__ */ React.createElement("div", { style: { height: 6, borderRadius: 3, background: "#E24B4A", width: `${battle.aiHp / STARTING_HP * 100}%`, transition: "width .3s" } })), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 600, minWidth: 18 } }, battle.aiHp))), /* @__PURE__ */ React.createElement("div", { style: { minHeight: 80, padding: "6px 4px", borderRadius: 8, background: "rgba(226,75,74,.08)", display: "flex", gap: 4, alignItems: "center", justifyContent: "center", flexWrap: "wrap" } }, battle.aiBoard.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--color-text-tertiary)" } }, "Empty") : battle.aiBoard.map((bc, i) => {
+      const over = battle.phase === "won" || battle.phase === "lost";
+      return /* @__PURE__ */ React.createElement("div", { style: { ...S.content, gap: 6, padding: "8px 12px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11 } }, /* @__PURE__ */ React.createElement("span", { style: { color: "#777" } }, "AI Tier ", game.aiTier), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { color: "#E24B4A", fontSize: 10 } }, "HP"), /* @__PURE__ */ React.createElement("div", { style: { width: 60, height: 6, borderRadius: 3, background: "#2c2c30" } }, /* @__PURE__ */ React.createElement("div", { style: { height: 6, borderRadius: 3, background: "#E24B4A", width: battle.aiHp / STARTING_HP * 100 + "%" } })), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 600 } }, battle.aiHp))), /* @__PURE__ */ React.createElement("div", { style: { minHeight: 80, padding: "6px 4px", borderRadius: 8, background: "rgba(226,75,74,.08)", display: "flex", gap: 4, alignItems: "center", justifyContent: "center", flexWrap: "wrap" } }, battle.aiBoard.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "Empty") : battle.aiBoard.map((bc, i) => {
         const def = ALL_CARDS.find((c) => c.id === bc.id) || bc;
-        const selCard = attackMode !== null ? battle.playerBoard[attackMode] : null;
-        const canTarget = selCard && !selCard.hasAttacked && selCard.canAttack && !selCard.justPlayed;
+        const sel = atk !== null ? battle.playerBoard[atk] : null;
+        const canT = sel && !sel.hasAttacked && sel.canAttack && !sel.justPlayed;
         return /* @__PURE__ */ React.createElement("div", { key: bc.uid, onClick: () => {
-          if (attackMode !== null && canTarget) {
-            attackWithCard(attackMode, i);
-            setAttackMode(null);
+          if (atk !== null && canT) {
+            attackWithCard(atk, i);
+            setAtk(null);
           }
-        }, style: { cursor: canTarget ? "crosshair" : "default" } }, /* @__PURE__ */ React.createElement(MiniCard, { cardDef: def, battleCard: bc, showStats: true }));
-      })), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontSize: 10, color: "var(--color-text-tertiary)" } }, "Turn ", battle.turn, " \xB7 ", isOver ? battle.phase === "won" ? "Victory!" : "Defeat" : battle.isPlayerTurn ? "Your turn" : "AI thinking..."), /* @__PURE__ */ React.createElement("div", { style: { minHeight: 80, padding: "6px 4px", borderRadius: 8, background: "rgba(127,119,221,.08)", display: "flex", gap: 4, alignItems: "center", justifyContent: "center", flexWrap: "wrap" } }, battle.playerBoard.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--color-text-tertiary)" } }, "Empty") : battle.playerBoard.map((bc, i) => {
+        }, style: { cursor: canT ? "crosshair" : "default" } }, /* @__PURE__ */ React.createElement(MiniCard, { cardDef: def, battleCard: bc }));
+      })), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontSize: 10, color: "#777" } }, "Turn ", battle.turn, " \xB7 ", over ? battle.phase === "won" ? "Victory!" : "Defeat" : battle.isPlayerTurn ? "Your turn" : "AI..."), /* @__PURE__ */ React.createElement("div", { style: { minHeight: 80, padding: "6px 4px", borderRadius: 8, background: "rgba(127,119,221,.08)", display: "flex", gap: 4, alignItems: "center", justifyContent: "center", flexWrap: "wrap" } }, battle.playerBoard.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "Empty") : battle.playerBoard.map((bc, i) => {
         const def = ALL_CARDS.find((c) => c.id === bc.id) || bc;
-        const canAtk = !bc.hasAttacked && bc.canAttack && !bc.justPlayed && battle.isPlayerTurn && !isOver;
-        const canSelect = battle.isPlayerTurn && !isOver;
         return /* @__PURE__ */ React.createElement("div", { key: bc.uid, onClick: () => {
-          if (canSelect) setAttackMode(attackMode === i ? null : i);
-        }, style: {
-          cursor: canSelect ? "pointer" : "default",
-          outline: attackMode === i ? "2px solid #7F77DD" : "none",
-          borderRadius: 10
-        } }, /* @__PURE__ */ React.createElement(MiniCard, { cardDef: def, battleCard: bc, selected: attackMode === i }));
-      })), attackMode !== null && (() => {
-        const sel = battle.playerBoard[attackMode];
-        const canAtk = sel && !sel.hasAttacked && sel.canAttack && !sel.justPlayed;
-        return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, canAtk && /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("danger"), fontSize: 11, padding: "6px 12px", flex: 1 }, onClick: () => {
-          attackWithCard(attackMode, -1);
-          setAttackMode(null);
+          if (battle.isPlayerTurn && !over) setAtk(atk === i ? null : i);
+        }, style: { cursor: battle.isPlayerTurn ? "pointer" : "default", outline: atk === i ? "2px solid #7F77DD" : "none", borderRadius: 10 } }, /* @__PURE__ */ React.createElement(MiniCard, { cardDef: def, battleCard: bc, selected: atk === i }));
+      })), atk !== null && (() => {
+        const sel = battle.playerBoard[atk];
+        const canA = sel && !sel.hasAttacked && sel.canAttack && !sel.justPlayed;
+        return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, canA && /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("danger"), fontSize: 11, padding: "6px 12px", flex: 1 }, onClick: () => {
+          attackWithCard(atk, -1);
+          setAtk(null);
         } }, "Attack Face"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("gold"), fontSize: 11, padding: "6px 12px", flex: 1 }, onClick: () => {
-          recallCard(attackMode);
-          setAttackMode(null);
-        } }, "Recall (1 mana)"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), fontSize: 11, padding: "6px 12px" }, onClick: () => setAttackMode(null) }, "Cancel"));
-      })(), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { color: "#E24B4A", fontSize: 10 } }, "HP"), /* @__PURE__ */ React.createElement("div", { style: { width: 60, height: 6, borderRadius: 3, background: "var(--color-background-secondary)" } }, /* @__PURE__ */ React.createElement("div", { style: { height: 6, borderRadius: 3, background: "#E24B4A", width: `${battle.playerHp / STARTING_HP * 100}%`, transition: "width .3s" } })), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 600 } }, battle.playerHp)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 2 } }, Array.from({ length: battle.playerMaxMana }, (_, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { width: 10, height: 10, borderRadius: "50%", border: "1px solid #378ADD", background: i < battle.playerMana ? "#378ADD" : "transparent", transition: "all .2s" } }))), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "var(--color-text-tertiary)" } }, "Deck: ", battle.playerDeck.length)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, overflowX: "auto", padding: "4px 0", minHeight: 92 } }, battle.playerHand.map((card, i) => {
+          recallCard(atk);
+          setAtk(null);
+        } }, "Recall"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), fontSize: 11, padding: "6px 12px" }, onClick: () => setAtk(null) }, "Cancel"));
+      })(), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { color: "#E24B4A", fontSize: 10 } }, "HP"), /* @__PURE__ */ React.createElement("div", { style: { width: 60, height: 6, borderRadius: 3, background: "#2c2c30" } }, /* @__PURE__ */ React.createElement("div", { style: { height: 6, borderRadius: 3, background: "#E24B4A", width: battle.playerHp / STARTING_HP * 100 + "%" } })), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 600 } }, battle.playerHp)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 2 } }, Array.from({ length: battle.playerMaxMana }, (_, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { width: 10, height: 10, borderRadius: "50%", border: "1px solid #378ADD", background: i < battle.playerMana ? "#378ADD" : "transparent" } }))), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#777" } }, "Deck: ", battle.playerDeck.length)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, overflowX: "auto", padding: "4px 0", minHeight: 92 } }, battle.playerHand.map((card, i) => {
         const def = ALL_CARDS.find((c) => c.id === card.id) || card;
-        const canPlay = card.cost <= battle.playerMana && battle.isPlayerTurn && !isOver && battle.playerBoard.length < MAX_BOARD;
-        return /* @__PURE__ */ React.createElement("div", { key: card.uid, style: { opacity: canPlay ? 1 : 0.5, transition: "opacity .15s" } }, /* @__PURE__ */ React.createElement(MiniCard, { cardDef: def, onClick: () => {
-          if (canPlay) playCard(i);
-        }, selected: selectedHand === i }));
-      })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, !isOver ? /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), flex: 1 }, onClick: endTurn, disabled: !battle.isPlayerTurn }, "End Turn") : /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), flex: 1 }, onClick: () => {
+        const canP = card.cost <= battle.playerMana && battle.isPlayerTurn && !over && battle.playerBoard.length < MAX_BOARD;
+        return /* @__PURE__ */ React.createElement("div", { key: card.uid, style: { opacity: canP ? 1 : 0.5 } }, /* @__PURE__ */ React.createElement(MiniCard, { cardDef: def, onClick: () => {
+          if (canP) playCard(i);
+        } }));
+      })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, !over ? /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), flex: 1 }, onClick: endTurn, disabled: !battle.isPlayerTurn }, "End Turn") : /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), flex: 1 }, onClick: () => {
         setBattle(null);
         setScreen("home");
-      } }, "Back to Home")), /* @__PURE__ */ React.createElement("div", { ref: logRef, style: { maxHeight: 80, overflowY: "auto", fontSize: 10, color: "var(--color-text-tertiary)", padding: 6, borderRadius: 6, background: "var(--color-background-secondary)" } }, battle.log.slice(-8).map((l, i) => /* @__PURE__ */ React.createElement("div", { key: i }, l))));
+      } }, "Home")), /* @__PURE__ */ React.createElement("div", { ref: logRef, style: { maxHeight: 80, overflowY: "auto", fontSize: 10, color: "#777", padding: 6, borderRadius: 6, background: "#2c2c30" } }, battle.log.slice(-8).map((l, i) => /* @__PURE__ */ React.createElement("div", { key: i }, l))));
     };
-    const navItems = [
-      { id: "home", label: "Home", icon: "\u25C9" },
-      { id: "packs", label: "Packs", icon: "\u25C6" },
-      { id: "collection", label: "Cards", icon: "\u25C7" },
-      { id: "decks", label: "Decks", icon: "\u2630" },
-      { id: "battle", label: "Battle", icon: "\u2694" }
-    ];
-    return /* @__PURE__ */ React.createElement("div", { style: S.app }, /* @__PURE__ */ React.createElement("style", null, `
-        @keyframes slideDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        * { box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 4px; height: 4px; }
-        ::-webkit-scrollbar-thumb { background: rgba(127,119,221,.3); border-radius: 2px; }
-      `), /* @__PURE__ */ React.createElement(Toasts, null), screen === "home" && /* @__PURE__ */ React.createElement(HomeScreen, null), screen === "packs" && /* @__PURE__ */ React.createElement(PackScreen, null), screen === "collection" && /* @__PURE__ */ React.createElement(CollectionScreen, null), screen === "decks" && /* @__PURE__ */ React.createElement(DecksScreen, null), screen === "deckbuilder" && /* @__PURE__ */ React.createElement(DeckBuilder, null), screen === "battle" && /* @__PURE__ */ React.createElement(BattleScreen, null), screen !== "deckbuilder" && /* @__PURE__ */ React.createElement("div", { style: S.nav }, navItems.map((n) => /* @__PURE__ */ React.createElement("div", { key: n.id, style: S.navItem(screen === n.id), onClick: () => {
-      if (n.id === "battle") {
-        startBattle();
-      } else setScreen(n.id);
-    } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16 } }, n.icon), /* @__PURE__ */ React.createElement("span", null, n.label))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, fontSize: 10, color: "#EF9F27", fontWeight: 500 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14 } }, "\u2B21"), /* @__PURE__ */ React.createElement("span", null, game.coins.toLocaleString()))));
+    const SocialScreen = () => {
+      if (!user) return /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "40px 0" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600, marginBottom: 8 } }, "Social"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#777", marginBottom: 16 } }, "Log in to add friends and battle online"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, justifyContent: "center" } }, /* @__PURE__ */ React.createElement("button", { style: S.btn("primary"), onClick: () => setAuthScreen("login") }, "Log In"), /* @__PURE__ */ React.createElement("button", { style: S.btn(), onClick: () => setAuthScreen("register") }, "Sign Up"))));
+      return /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600 } }, "Social"), friendRequests.length > 0 && /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "#EF9F27", marginBottom: 6 } }, "Requests (", friendRequests.length, ")"), friendRequests.map((r) => /* @__PURE__ */ React.createElement("div", { key: r.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "0.5px solid #333" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12 } }, r.username), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("success"), fontSize: 10, padding: "4px 10px" }, onClick: () => acceptFriend(r.id) }, "Accept"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), fontSize: 10, padding: "4px 10px" }, onClick: () => declineFriend(r.id) }, "Decline"))))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement("input", { style: { ...S.input, flex: 1 }, placeholder: "Search username...", value: searchQuery, onChange: (e) => setSearchQuery(e.target.value), onKeyDown: (e) => {
+        if (e.key === "Enter") searchUsers();
+      } }), /* @__PURE__ */ React.createElement("button", { style: S.btn("primary"), onClick: searchUsers }, "Search")), searchResults.length > 0 && /* @__PURE__ */ React.createElement("div", { style: S.card }, searchResults.map((u) => {
+        const isF = friends.some((f) => f.id === u.uid);
+        return /* @__PURE__ */ React.createElement("div", { key: u.uid, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "0.5px solid #333" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 500 } }, u.username), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, u.gameState?.stats?.wins || 0, "W \xB7 ", u.gameState?.stats?.losses || 0, "L")), isF ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#1D9E75" } }, "Friends") : /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), fontSize: 10, padding: "4px 10px" }, onClick: () => sendFriendRequest(u.uid, u.username) }, "Add"));
+      })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 500, marginTop: 4 } }, "Friends (", friends.length, ")"), friends.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777", textAlign: "center", padding: 16 } }, "No friends yet") : friends.map((f) => /* @__PURE__ */ React.createElement("div", { key: f.id, style: { ...S.card, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 28, height: 28, borderRadius: "50%", background: "#26215C", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 600, color: "#AFA9EC" } }, f.username?.slice(0, 2).toUpperCase()), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 500 } }, f.username)), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), fontSize: 10, padding: "6px 12px" }, onClick: () => sendBattleRequest(f.id, f.username) }, "Battle"))));
+    };
+    const navItems = [{ id: "home", label: "Home", icon: "\u25C9" }, { id: "packs", label: "Packs", icon: "\u25C6" }, { id: "collection", label: "Cards", icon: "\u25C7" }, { id: "decks", label: "Decks", icon: "\u2630" }, { id: "social", label: "Social", icon: "\u25CE" }];
+    if (authScreen) return /* @__PURE__ */ React.createElement("div", { style: S.app }, /* @__PURE__ */ React.createElement("style", null, `@keyframes slideDown{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}`), /* @__PURE__ */ React.createElement(Toasts, null), /* @__PURE__ */ React.createElement(AuthScreenUI, null));
+    return /* @__PURE__ */ React.createElement("div", { style: S.app }, /* @__PURE__ */ React.createElement("style", null, `@keyframes slideDown{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}*{box-sizing:border-box}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:rgba(127,119,221,.3);border-radius:2px}`), /* @__PURE__ */ React.createElement(Toasts, null), screen === "home" && /* @__PURE__ */ React.createElement(HomeScreen, null), screen === "packs" && /* @__PURE__ */ React.createElement(PackScreen, null), screen === "collection" && /* @__PURE__ */ React.createElement(CollectionScreen, null), screen === "decks" && /* @__PURE__ */ React.createElement(DecksScreen, null), screen === "deckbuilder" && /* @__PURE__ */ React.createElement(DeckBuilder, null), screen === "battle" && /* @__PURE__ */ React.createElement(BattleScreen, null), screen === "social" && /* @__PURE__ */ React.createElement(SocialScreen, null), screen !== "deckbuilder" && screen !== "battle" && /* @__PURE__ */ React.createElement("div", { style: S.nav }, navItems.map((n) => /* @__PURE__ */ React.createElement("div", { key: n.id, style: S.navItem(screen === n.id), onClick: () => setScreen(n.id) }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16 } }, n.icon), /* @__PURE__ */ React.createElement("span", null, n.label))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, fontSize: 10, color: "#EF9F27", fontWeight: 500 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14 } }, "\u2B21"), /* @__PURE__ */ React.createElement("span", null, game.coins.toLocaleString()))));
   }
   return __toCommonJS(game_exports);
 })();

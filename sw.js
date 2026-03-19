@@ -1,11 +1,13 @@
-const CACHE_NAME = "deck-v1.0.0";
+const CACHE_NAME = "deck-v2.0.0";
 const ASSETS = [
   "./",
   "./index.html",
   "./game.js",
   "./manifest.json",
   "./icon-192.png",
-  "./icon-512.png"
+  "./icon-512.png",
+  "https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"
 ];
 
 self.addEventListener("install", (e) => {
