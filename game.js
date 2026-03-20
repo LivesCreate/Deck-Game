@@ -261,6 +261,20 @@ var CardGameModule = (() => {
     (0, import_react.useEffect)(() => {
       const auth = getAuth();
       if (!auth) return;
+      auth.getRedirectResult().then(async (result) => {
+        if (result && result.user) {
+          const db = getDb();
+          if (db) {
+            const doc = await db.collection("users").doc(result.user.uid).get();
+            if (!doc.exists) {
+              const uname = result.user.displayName || "Player" + Math.floor(Math.random() * 9999);
+              await db.collection("users").doc(result.user.uid).set({ username: uname, usernameLC: uname.toLowerCase(), gameState: game, createdAt: window.firebase.firestore.FieldValue.serverTimestamp() });
+            }
+          }
+          setAuthScreen(null);
+        }
+      }).catch(() => {
+      });
       const unsub = auth.onAuthStateChanged(async (u) => {
         setUser(u);
         if (u) {
@@ -396,14 +410,7 @@ var CardGameModule = (() => {
       setAuthError("");
       try {
         const provider = new window.firebase.auth.GoogleAuthProvider();
-        const cred = await auth.signInWithPopup(provider);
-        const doc = await db.collection("users").doc(cred.user.uid).get();
-        if (!doc.exists) {
-          const uname = cred.user.displayName || "Player" + Math.floor(Math.random() * 9999);
-          await db.collection("users").doc(cred.user.uid).set({ username: uname, usernameLC: uname.toLowerCase(), gameState: game, createdAt: window.firebase.firestore.FieldValue.serverTimestamp() });
-        }
-        setAuthScreen(null);
-        toast("Logged in with Google!", "success");
+        await auth.signInWithRedirect(provider);
       } catch (e) {
         setAuthError(e.message || "Google login failed.");
       }
