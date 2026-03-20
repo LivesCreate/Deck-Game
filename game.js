@@ -412,7 +412,7 @@ var CardGameModule = (() => {
         const provider = new window.firebase.auth.GoogleAuthProvider();
         await auth.signInWithRedirect(provider);
       } catch (e) {
-        setAuthError(e.message || "Google login failed.");
+        if (e.code !== "auth/popup-closed-by-user" && e.code !== "auth/cancelled-popup-request" && e.code !== "auth/redirect-cancelled-by-user") setAuthError(e.message || "Google login failed.");
       }
       setAuthLoading(false);
     }, [game, toast]);
