@@ -29,7 +29,7 @@ var CardGameModule = (() => {
     default: () => CardGame
   });
   var import_react = __require("react");
-  var VERSION = "2.2.0";
+  var VERSION = "2.4.0";
   var FIREBASE_CONFIG = {
     apiKey: "AIzaSyBEgpJaRGN-Q8EnsZ-gwXUz7ySQJpBz0mw",
     authDomain: "deck-d04c7.firebaseapp.com",
@@ -129,8 +129,123 @@ var CardGameModule = (() => {
     { id: 37, name: "Glyph", cost: 3, atk: 3, hp: 3, rarity: "rare", shape: "cross", abilityId: "echo" },
     { id: 38, name: "Sigil", cost: 5, atk: 4, hp: 5, rarity: "epic", shape: "cross", abilityId: "regen" },
     { id: 39, name: "Rune", cost: 6, atk: 5, hp: 5, rarity: "epic", shape: "cross", abilityId: "strike" },
-    { id: 40, name: "Axiom", cost: 9, atk: 8, hp: 9, rarity: "legendary", shape: "cross", abilityId: "grow" }
+    { id: 40, name: "Axiom", cost: 9, atk: 8, hp: 9, rarity: "legendary", shape: "cross", abilityId: "grow" },
+    // Spell cards (no atk/hp, instant effect)
+    { id: 41, name: "Zap", cost: 1, atk: 0, hp: 0, rarity: "common", shape: "diamond", abilityId: "none", isSpell: true, spellEffect: "deal2" },
+    { id: 42, name: "Mend", cost: 1, atk: 0, hp: 0, rarity: "common", shape: "circle", abilityId: "none", isSpell: true, spellEffect: "heal3" },
+    { id: 43, name: "Surge", cost: 2, atk: 0, hp: 0, rarity: "common", shape: "star", abilityId: "none", isSpell: true, spellEffect: "draw2" },
+    { id: 44, name: "Shatter", cost: 3, atk: 0, hp: 0, rarity: "rare", shape: "triangle", abilityId: "none", isSpell: true, spellEffect: "deal4" },
+    { id: 45, name: "Fortify", cost: 2, atk: 0, hp: 0, rarity: "rare", shape: "square", abilityId: "none", isSpell: true, spellEffect: "buff2" },
+    { id: 46, name: "Ignite", cost: 4, atk: 0, hp: 0, rarity: "rare", shape: "pentagon", abilityId: "none", isSpell: true, spellEffect: "aoe3" },
+    { id: 47, name: "Siphon", cost: 3, atk: 0, hp: 0, rarity: "epic", shape: "hexagon", abilityId: "none", isSpell: true, spellEffect: "drain3" },
+    { id: 48, name: "Rift", cost: 5, atk: 0, hp: 0, rarity: "epic", shape: "cross", abilityId: "none", isSpell: true, spellEffect: "destroy1" },
+    { id: 49, name: "Genesis", cost: 6, atk: 0, hp: 0, rarity: "epic", shape: "star", abilityId: "none", isSpell: true, spellEffect: "healfull" },
+    { id: 50, name: "Oblivion", cost: 8, atk: 0, hp: 0, rarity: "legendary", shape: "circle", abilityId: "none", isSpell: true, spellEffect: "destroyall" }
   ];
+  var SPELL_EFFECTS = {
+    deal2: { desc: "Deal 2 damage to a random enemy", fn: (b) => {
+      if (b.aiBoard.length > 0) {
+        const i = Math.floor(Math.random() * b.aiBoard.length);
+        b.aiBoard[i] = { ...b.aiBoard[i], currentHp: b.aiBoard[i].currentHp - 2 };
+        b.aiBoard = b.aiBoard.filter((c) => c.currentHp > 0);
+        return "Zap hits for 2!";
+      } else {
+        b.aiHp -= 2;
+        return "Zap hits face for 2!";
+      }
+    } },
+    heal3: { desc: "Heal 3 HP", fn: (b) => {
+      b.playerHp = Math.min(STARTING_HP, b.playerHp + 3);
+      return "Healed 3 HP!";
+    } },
+    draw2: { desc: "Draw 2 cards", fn: (b) => {
+      let d = 0;
+      for (let i = 0; i < 2; i++) {
+        if (b.playerDeck.length > 0) {
+          b.playerHand.push(b.playerDeck.shift());
+          d++;
+        }
+      }
+      return "Drew " + d + " cards!";
+    } },
+    deal4: { desc: "Deal 4 damage to a random enemy", fn: (b) => {
+      if (b.aiBoard.length > 0) {
+        const i = Math.floor(Math.random() * b.aiBoard.length);
+        b.aiBoard[i] = { ...b.aiBoard[i], currentHp: b.aiBoard[i].currentHp - 4 };
+        b.aiBoard = b.aiBoard.filter((c) => c.currentHp > 0);
+        return "Shatter hits for 4!";
+      } else {
+        b.aiHp -= 4;
+        return "Shatter hits face for 4!";
+      }
+    } },
+    buff2: { desc: "+2/+2 to all your minions", fn: (b) => {
+      b.playerBoard = b.playerBoard.map((c) => ({ ...c, currentAtk: c.currentAtk + 2, currentHp: c.currentHp + 2 }));
+      return "All minions get +2/+2!";
+    } },
+    aoe3: { desc: "Deal 3 damage to ALL enemies", fn: (b) => {
+      b.aiBoard = b.aiBoard.map((c) => c.shielded ? { ...c, shielded: false } : { ...c, currentHp: c.currentHp - 3 }).filter((c) => c.currentHp > 0);
+      return "Ignite burns all for 3!";
+    } },
+    drain3: { desc: "Deal 3 to random enemy, heal 3", fn: (b) => {
+      if (b.aiBoard.length > 0) {
+        const i = Math.floor(Math.random() * b.aiBoard.length);
+        b.aiBoard[i] = { ...b.aiBoard[i], currentHp: b.aiBoard[i].currentHp - 3 };
+        b.aiBoard = b.aiBoard.filter((c) => c.currentHp > 0);
+      } else {
+        b.aiHp -= 3;
+      }
+      b.playerHp = Math.min(STARTING_HP, b.playerHp + 3);
+      return "Siphon: 3 damage + 3 heal!";
+    } },
+    destroy1: { desc: "Destroy a random enemy minion", fn: (b) => {
+      if (b.aiBoard.length > 0) {
+        const i = Math.floor(Math.random() * b.aiBoard.length);
+        const name = b.aiBoard[i].name;
+        b.aiBoard.splice(i, 1);
+        return "Rift destroys " + name + "!";
+      }
+      return "No targets!";
+    } },
+    healfull: { desc: "Fully heal your HP", fn: (b) => {
+      b.playerHp = STARTING_HP;
+      return "Fully healed!";
+    } },
+    destroyall: { desc: "Destroy ALL minions on both sides", fn: (b) => {
+      b.aiBoard = [];
+      b.playerBoard = [];
+      return "Oblivion wipes the board!";
+    } }
+  };
+  var RANKS = [{ name: "Bronze", minWins: 0, color: "#cd7f32" }, { name: "Silver", minWins: 10, color: "#c0c0c0" }, { name: "Gold", minWins: 25, color: "#ffd700" }, { name: "Platinum", minWins: 50, color: "#e5e4e2" }, { name: "Diamond", minWins: 100, color: "#b9f2ff" }];
+  function getRank(wins) {
+    let r = RANKS[0];
+    for (const rank of RANKS) {
+      if (wins >= rank.minWins) r = rank;
+    }
+    return r;
+  }
+  var CRAFT_COSTS = { common: 50, rare: 150, epic: 400, legendary: 1000 };
+  var QUEST_TEMPLATES = [
+    { type: "win_battles", desc: "Win {n} battles", targets: [1, 2, 3], reward: [30, 60, 100] },
+    { type: "play_cards", desc: "Play {n} cards", targets: [5, 10, 15], reward: [25, 50, 80] },
+    { type: "play_spells", desc: "Cast {n} spell cards", targets: [2, 3, 5], reward: [30, 60, 100] },
+    { type: "deal_damage", desc: "Deal {n} face damage", targets: [10, 20, 30], reward: [30, 60, 100] },
+    { type: "kill_minions", desc: "Destroy {n} enemy minions", targets: [3, 5, 8], reward: [25, 50, 80] },
+    { type: "play_rares", desc: "Play {n} rare+ cards", targets: [2, 3, 5], reward: [30, 60, 100] },
+    { type: "open_packs", desc: "Open {n} packs", targets: [1, 2, 3], reward: [25, 50, 80] },
+    { type: "use_recall", desc: "Recall {n} cards", targets: [1, 2, 3], reward: [20, 40, 70] }
+  ];
+  function getDayKey() { return new Date().toISOString().slice(0, 10); }
+  function generateDailyQuests(dayKey) {
+    var seed = 0; for (var i = 0; i < dayKey.length; i++) seed = ((seed << 5) - seed + dayKey.charCodeAt(i)) | 0;
+    var rng = function() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+    var indices = []; while (indices.length < 3) { var idx = Math.floor(rng() * QUEST_TEMPLATES.length); if (!indices.includes(idx)) indices.push(idx); }
+    return indices.map(function(qi) {
+      var t = QUEST_TEMPLATES[qi]; var di = Math.floor(rng() * t.targets.length);
+      return { type: t.type, desc: t.desc.replace("{n}", t.targets[di]), target: t.targets[di], reward: t.reward[di], progress: 0, claimed: false };
+    });
+  }
   var getAbility = (id) => ABILITIES.find((a) => a.id === id) || ABILITIES[0];
   var uid = () => Math.random().toString(36).slice(2, 10);
   var shuffle = (a) => {
@@ -149,7 +264,7 @@ var CardGameModule = (() => {
   var STARTING_HP = 20;
   var MAX_MANA = 10;
   function makeInitialState() {
-    return { coins: 500, collection: STARTER_IDS.map((id) => id), decks: [{ id: "starter", name: "Starter Deck", cardIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15, 20, 36, 5] }], activeDeckId: "starter", stats: { wins: 0, losses: 0, totalGames: 0 }, aiTier: 1 };
+    return { coins: 500, collection: STARTER_IDS.map((id) => id), decks: [{ id: "starter", name: "Starter Deck", cardIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15, 20, 36, 5] }], activeDeckId: "starter", stats: { wins: 0, losses: 0, totalGames: 0 }, aiTier: 1, questDay: "", quests: [] };
   }
   function rollRarity() {
     const r = Math.random();
@@ -258,6 +373,28 @@ var CardGameModule = (() => {
       setToasts((t) => [...t, { id, msg, type }]);
       setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3e3);
     }, []);
+    (0, import_react.useEffect)(() => {
+      const today = getDayKey();
+      if (game.questDay !== today) {
+        setGame((g) => ({ ...g, questDay: today, quests: generateDailyQuests(today) }));
+      }
+    }, []);
+    const updateQuestProgress = (0, import_react.useCallback)((type, amount) => {
+      setGame((g) => {
+        if (!g.quests || g.quests.length === 0) return g;
+        const nq = g.quests.map((q) => q.type === type && !q.claimed ? { ...q, progress: Math.min(q.target, q.progress + amount) } : q);
+        return { ...g, quests: nq };
+      });
+    }, []);
+    const claimQuest = (0, import_react.useCallback)((qi) => {
+      setGame((g) => {
+        const q = g.quests[qi];
+        if (!q || q.claimed || q.progress < q.target) return g;
+        const nq = [...g.quests]; nq[qi] = { ...nq[qi], claimed: true };
+        return { ...g, quests: nq, coins: g.coins + q.reward };
+      });
+      toast("Quest reward claimed!", "success");
+    }, [toast]);
     (0, import_react.useEffect)(() => {
       const auth = getAuth();
       if (!auth) return;
@@ -572,7 +709,8 @@ var CardGameModule = (() => {
       setGame((g) => ({ ...g, coins: g.coins - cost }));
       setPackCards(cards);
       setRevealedCards([]);
-    }, [game.coins, toast]);
+      updateQuestProgress("open_packs", 1);
+    }, [game.coins, toast, updateQuestProgress]);
     const revealCard = (0, import_react.useCallback)((i) => {
       if (!packCards || revealedCards.includes(i)) return;
       setRevealedCards((r) => [...r, i]);
@@ -592,6 +730,15 @@ var CardGameModule = (() => {
         if (!revealedCards.includes(i)) setTimeout(() => revealCard(i), i * 200);
       });
     }, [packCards, revealedCards, revealCard]);
+    const craftCard = (0, import_react.useCallback)((cardId) => {
+      const cardDef = ALL_CARDS.find((c) => c.id === cardId);
+      if (!cardDef) return;
+      const cost = CRAFT_COSTS[cardDef.rarity];
+      if (game.coins < cost) { toast("Need " + cost + " coins!", "error"); return; }
+      if (game.collection.includes(cardId)) { toast("Already owned!", "error"); return; }
+      setGame((g) => ({ ...g, coins: g.coins - cost, collection: [...g.collection, cardId] }));
+      toast("Crafted " + cardDef.name + "!", "success");
+    }, [game.coins, game.collection, toast]);
     const startDeckEdit = (0, import_react.useCallback)((did) => {
       const deck = game.decks.find((d) => d.id === did);
       if (deck) {
@@ -650,6 +797,23 @@ var CardGameModule = (() => {
         toast("Not enough mana!", "error");
         return;
       }
+      const cardDef = ALL_CARDS.find((c) => c.id === card.id) || card;
+      if (cardDef.isSpell) {
+        const nh2 = battle.playerHand.filter((_, i) => i !== hi);
+        const effect = SPELL_EFFECTS[cardDef.spellEffect];
+        if (!effect) {
+          toast("Unknown spell!", "error");
+          return;
+        }
+        let newState = { ...battle, playerHand: nh2, playerMana: battle.playerMana - card.cost, playerBoard: [...battle.playerBoard], aiBoard: [...battle.aiBoard], playerHp: battle.playerHp, aiHp: battle.aiHp, playerDeck: [...battle.playerDeck] };
+        const msg = effect.fn(newState);
+        setBattle((b) => ({ ...b, ...newState, log: [...b.log, "Cast " + card.name + "! " + msg], phase: newState.aiHp <= 0 ? "won" : b.phase }));
+        updateQuestProgress("play_cards", 1);
+        updateQuestProgress("play_spells", 1);
+        if (cardDef.rarity === "rare" || cardDef.rarity === "epic" || cardDef.rarity === "legendary") updateQuestProgress("play_rares", 1);
+        if (newState.aiHp <= 0) handleBattleEnd(true);
+        return;
+      }
       if (battle.playerBoard.length >= MAX_BOARD) {
         toast("Board full!", "error");
         return;
@@ -660,6 +824,7 @@ var CardGameModule = (() => {
       let ab = [...battle.aiBoard];
       let ahp = battle.aiHp;
       const logs = [];
+      const prevAiCount = battle.aiBoard.length;
       if (bc.abilityId === "blast") {
         ab = ab.map((c) => c.shielded ? { ...c, shielded: false } : { ...c, currentHp: c.currentHp - 2 }).filter((c) => c.currentHp > 0);
         logs.push(bc.name + " blasts for 2!");
@@ -681,8 +846,11 @@ var CardGameModule = (() => {
       let eh = [...nh];
       if (bc.abilityId === "echo" && nd.length > 0) eh = [...eh, nd.shift()];
       setBattle((b) => ({ ...b, playerMana: b.playerMana - card.cost, playerBoard: nb, playerHand: eh, playerDeck: nd, aiBoard: ab, aiHp: ahp, log: [...b.log, "Play " + card.name + ".", ...logs], phase: ahp <= 0 ? "won" : b.phase }));
+      updateQuestProgress("play_cards", 1);
+      if (cardDef.rarity === "rare" || cardDef.rarity === "epic" || cardDef.rarity === "legendary") updateQuestProgress("play_rares", 1);
+      var killed = prevAiCount - ab.length; if (killed > 0) updateQuestProgress("kill_minions", killed);
       if (ahp <= 0) handleBattleEnd(true);
-    }, [battle, toast]);
+    }, [battle, toast, updateQuestProgress]);
     const attackWithCard = (0, import_react.useCallback)((bi, ti) => {
       if (!battle || !battle.isPlayerTurn || battle.phase !== "playing") return;
       const atk = battle.playerBoard[bi];
@@ -696,6 +864,7 @@ var CardGameModule = (() => {
         let hp2 = battle.aiHp - atk.currentAtk;
         let heal = atk.abilityId === "drain" ? atk.currentAtk : 0;
         setBattle((b) => ({ ...b, aiHp: hp2, playerHp: Math.min(STARTING_HP, b.playerHp + heal), playerBoard: b.playerBoard.map((c, i) => i === bi ? { ...c, hasAttacked: true } : c), log: [...b.log, atk.name + " attacks face!"], phase: hp2 <= 0 ? "won" : b.phase }));
+        updateQuestProgress("deal_damage", atk.currentAtk);
         if (hp2 <= 0) handleBattleEnd(true);
       } else {
         const tgt = battle.aiBoard[ti];
@@ -708,8 +877,9 @@ var CardGameModule = (() => {
         let ah = atk.shielded ? atk.currentHp : atk.currentHp - tgt.currentAtk;
         let heal = atk.abilityId === "drain" && !tgt.shielded ? Math.min(atk.currentAtk, tgt.currentHp) : 0;
         setBattle((b) => ({ ...b, playerBoard: b.playerBoard.map((c, i) => i === bi ? { ...c, currentHp: ah, hasAttacked: true, shielded: false } : c).filter((c) => c.currentHp > 0), aiBoard: b.aiBoard.map((c, i) => i === ti ? { ...c, currentHp: th, shielded: false } : c).filter((c) => c.currentHp > 0), playerHp: Math.min(STARTING_HP, b.playerHp + heal), log: [...b.log, atk.name + " attacks " + tgt.name + "!"] }));
+        if (th <= 0) updateQuestProgress("kill_minions", 1);
       }
-    }, [battle, toast]);
+    }, [battle, toast, updateQuestProgress]);
     const recallCard = (0, import_react.useCallback)((bi) => {
       if (!battle || !battle.isPlayerTurn || battle.phase !== "playing") return;
       const card = battle.playerBoard[bi];
@@ -720,12 +890,14 @@ var CardGameModule = (() => {
       }
       const def = ALL_CARDS.find((c) => c.id === card.id) || card;
       setBattle((b) => ({ ...b, playerMana: b.playerMana - 1, playerBoard: b.playerBoard.filter((_, i) => i !== bi), playerHand: [...b.playerHand, { ...def, uid: uid() }], log: [...b.log, "Recall " + card.name + "."] }));
-    }, [battle, toast]);
+      updateQuestProgress("use_recall", 1);
+    }, [battle, toast, updateQuestProgress]);
     const handleBattleEnd = (0, import_react.useCallback)((won) => {
       const coins = won ? 50 + game.aiTier * 20 : 10;
       setGame((g) => ({ ...g, coins: g.coins + coins, stats: { wins: g.stats.wins + (won ? 1 : 0), losses: g.stats.losses + (won ? 0 : 1), totalGames: g.stats.totalGames + 1 }, aiTier: won ? Math.min(g.aiTier + 1, 10) : Math.max(g.aiTier - 1, 1) }));
       toast(won ? "Victory! +" + coins + " coins!" : "Defeat. +" + coins + " coins.", won ? "success" : "error");
-    }, [game.aiTier, toast]);
+      if (won) updateQuestProgress("win_battles", 1);
+    }, [game.aiTier, toast, updateQuestProgress]);
     const endTurn = (0, import_react.useCallback)(() => {
       if (!battle || !battle.isPlayerTurn || battle.phase !== "playing") return;
       let pb = battle.playerBoard.map((c) => ({ ...c, currentAtk: c.abilityId === "grow" ? c.currentAtk + 1 : c.currentAtk, currentHp: c.abilityId === "grow" ? c.currentHp + 1 : c.abilityId === "regen" ? c.currentHp + 1 : c.currentHp, hasAttacked: false, canAttack: true, justPlayed: false }));
@@ -847,7 +1019,9 @@ var CardGameModule = (() => {
       const c = battleCard || cardDef;
       const r = RARITIES[cardDef.rarity];
       const ab = getAbility(cardDef.abilityId);
-      return /* @__PURE__ */ React.createElement("div", { style: S.miniCard(cardDef.rarity, selected), onClick, title: ab.desc || cardDef.name }, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 3, left: 5, fontSize: 9, color: "#378ADD", fontWeight: 600 }, title: "Mana cost" }, "\u2B21", c.cost || cardDef.cost), battleCard?.shielded && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 2, right: 4, fontSize: 8, color: "#378ADD" } }, "\u25C8"), /* @__PURE__ */ React.createElement(ShapeIcon, { shape: cardDef.shape, color: r.color, size: 22 }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8, fontWeight: 500, textAlign: "center", lineHeight: 1.1, maxWidth: 56, overflow: "hidden" } }, cardDef.name), ab.id !== "none" && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 7, color: r.color, fontWeight: 500 } }, ab.name), showStats !== false && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", width: "100%", padding: "0 4px" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#EF9F27", fontWeight: 600 }, title: "Attack" }, "\u2694", battleCard ? c.currentAtk : cardDef.atk), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#E24B4A", fontWeight: 600 }, title: "Health" }, "\u2665", battleCard ? c.currentHp : cardDef.hp)));
+      const isSpell = cardDef.isSpell;
+      const spellDesc = isSpell && SPELL_EFFECTS[cardDef.spellEffect] ? SPELL_EFFECTS[cardDef.spellEffect].desc : "";
+      return /* @__PURE__ */ React.createElement("div", { style: S.miniCard(cardDef.rarity, selected), onClick, title: isSpell ? spellDesc : ab.desc || cardDef.name }, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 3, left: 5, fontSize: 9, color: "#378ADD", fontWeight: 600 }, title: "Mana cost" }, "\u2B21", c.cost || cardDef.cost), isSpell && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 2, right: 4, fontSize: 7, color: "#AFA9EC", fontWeight: 600 } }, "SPELL"), battleCard?.shielded && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", top: 2, right: 4, fontSize: 8, color: "#378ADD" } }, "\u25C8"), /* @__PURE__ */ React.createElement(ShapeIcon, { shape: cardDef.shape, color: r.color, size: 22 }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 8, fontWeight: 500, textAlign: "center", lineHeight: 1.1, maxWidth: 56, overflow: "hidden" } }, cardDef.name), isSpell ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 6, color: "#AFA9EC", textAlign: "center", lineHeight: 1.1, maxWidth: 56 } }, spellDesc) : /* @__PURE__ */ React.createElement(React.Fragment, null, ab.id !== "none" && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 7, color: r.color, fontWeight: 500 } }, ab.name), showStats !== false && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", width: "100%", padding: "0 4px" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#EF9F27", fontWeight: 600 }, title: "Attack" }, "\u2694", battleCard ? c.currentAtk : cardDef.atk), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#E24B4A", fontWeight: 600 }, title: "Health" }, "\u2665", battleCard ? c.currentHp : cardDef.hp))));
     };
     const Toasts = () => /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 999, display: "flex", flexDirection: "column", gap: 6, maxWidth: 380, width: "90%" } }, toasts.map((t) => /* @__PURE__ */ React.createElement("div", { key: t.id, style: { padding: "10px 16px", borderRadius: 10, fontSize: 13, fontWeight: 500, background: t.type === "error" ? "#E24B4A" : t.type === "success" ? "#1D9E75" : "#7F77DD", color: "#fff", animation: "slideDown .3s ease", boxShadow: "0 4px 12px rgba(0,0,0,.15)" } }, t.msg)));
     const AuthScreenUI = () => /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "24px 0 8px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600, letterSpacing: 2 } }, "DECK"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777", marginTop: 2 } }, authScreen === "register" ? "Create Account" : "Log In")), authError && /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 12px", borderRadius: 8, background: "#501313", color: "#F09595", fontSize: 12 } }, authError), /* @__PURE__ */ React.createElement("input", { style: S.input, placeholder: "Email", type: "email", value: authEmail, onChange: (e) => setAuthEmail(e.target.value) }), authScreen === "register" && /* @__PURE__ */ React.createElement("input", { style: S.input, placeholder: "Username (3-16 characters)", value: authUsername, onChange: (e) => setAuthUsername(e.target.value) }), /* @__PURE__ */ React.createElement("input", { style: S.input, placeholder: "Password", type: "password", value: authPass, onChange: (e) => setAuthPass(e.target.value) }), /* @__PURE__ */ React.createElement("button", { style: S.btn("primary"), onClick: authScreen === "register" ? handleRegister : handleLogin, disabled: authLoading }, authLoading ? "Loading..." : authScreen === "register" ? "Create Account" : "Log In"), /* @__PURE__ */ React.createElement("button", { style: S.btn("success"), onClick: handleGoogleLogin }, "Sign in with Google"), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontSize: 12, color: "#777" } }, authScreen === "register" ? /* @__PURE__ */ React.createElement("span", null, "Have an account? ", /* @__PURE__ */ React.createElement("span", { style: { color: "#AFA9EC", cursor: "pointer" }, onClick: () => {
@@ -860,7 +1034,9 @@ var CardGameModule = (() => {
     const HomeScreen = () => {
       const wr = game.stats.totalGames > 0 ? Math.round(game.stats.wins / game.stats.totalGames * 100) : 0;
       const col = new Set(game.collection).size;
-      return /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "16px 0 8px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600, letterSpacing: 2 } }, "DECK"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777", marginTop: 2 } }, "v", VERSION), user && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#AFA9EC", marginTop: 4 } }, username)), !user && /* @__PURE__ */ React.createElement("div", { style: { ...S.card, textAlign: "center", padding: "10px 16px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777", marginBottom: 6 } }, "Log in for multiplayer and cloud saves"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), flex: 1, fontSize: 11, padding: "8px" }, onClick: () => setAuthScreen("login") }, "Log In"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), flex: 1, fontSize: 11, padding: "8px" }, onClick: () => setAuthScreen("register") }, "Sign Up"))), battleRequests.filter((r) => r.status === "pending").length > 0 && /* @__PURE__ */ React.createElement("div", { style: { ...S.card, border: "1px solid #7F77DD" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "#AFA9EC", marginBottom: 6 } }, "Battle Requests"), battleRequests.filter((r) => r.status === "pending").map((req) => /* @__PURE__ */ React.createElement("div", { key: req.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12 } }, req.fromUsername), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("success"), fontSize: 10, padding: "4px 10px" }, onClick: () => acceptBattleReq(req) }, "Accept"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), fontSize: 10, padding: "4px 10px" }, onClick: () => declineBattleReq(req) }, "Decline"))))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "Cards"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600 } }, col, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "#777" } }, "/", ALL_CARDS.length))), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "Win rate"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600 } }, wr, "%")), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "AI Tier"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 18, fontWeight: 600 } }, "Tier ", game.aiTier), /* @__PURE__ */ React.createElement("div", { style: { height: 4, borderRadius: 2, background: "#2c2c30", marginTop: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { height: 4, borderRadius: 2, background: "#7F77DD", width: game.aiTier * 10 + "%" } }))), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "Record"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 500 } }, game.stats.wins, "W \xB7 ", game.stats.losses, "L"))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8 } }, /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), flex: 1 }, onClick: startBattle }, "Battle AI"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("gold"), flex: 1 }, onClick: () => setScreen("packs") }, "Open Packs")), user && /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), fontSize: 11, marginTop: 4 }, onClick: handleLogout }, "Log Out"));
+      const rank = getRank(game.stats.wins);
+      const nextRank = RANKS.find((r) => r.minWins > game.stats.wins);
+      return /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "16px 0 8px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600, letterSpacing: 2 } }, "DECK"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777", marginTop: 2 } }, "v", VERSION), user && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#AFA9EC", marginTop: 4 } }, username)), !user && /* @__PURE__ */ React.createElement("div", { style: { ...S.card, textAlign: "center", padding: "10px 16px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777", marginBottom: 6 } }, "Log in for multiplayer and cloud saves"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), flex: 1, fontSize: 11, padding: "8px" }, onClick: () => setAuthScreen("login") }, "Log In"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), flex: 1, fontSize: 11, padding: "8px" }, onClick: () => setAuthScreen("register") }, "Sign Up"))), battleRequests.filter((r) => r.status === "pending").length > 0 && /* @__PURE__ */ React.createElement("div", { style: { ...S.card, border: "1px solid #7F77DD" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "#AFA9EC", marginBottom: 6 } }, "Battle Requests"), battleRequests.filter((r) => r.status === "pending").map((req) => /* @__PURE__ */ React.createElement("div", { key: req.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12 } }, req.fromUsername), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("success"), fontSize: 10, padding: "4px 10px" }, onClick: () => acceptBattleReq(req) }, "Accept"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), fontSize: 10, padding: "4px 10px" }, onClick: () => declineBattleReq(req) }, "Decline"))))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "Cards"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600 } }, col, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "#777" } }, "/", ALL_CARDS.length))), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "Win rate"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 600 } }, wr, "%")), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "Rank"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 18, fontWeight: 600, color: rank.color } }, rank.name), /* @__PURE__ */ React.createElement("div", { style: { height: 4, borderRadius: 2, background: "#2c2c30", marginTop: 4 } }, /* @__PURE__ */ React.createElement("div", { style: { height: 4, borderRadius: 2, background: rank.color, width: nextRank ? (game.stats.wins - rank.minWins) / (nextRank.minWins - rank.minWins) * 100 + "%" : "100%" } })), nextRank && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "#555", marginTop: 2 } }, nextRank.minWins - game.stats.wins, " wins to ", nextRank.name)), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "Record"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, fontWeight: 500 } }, game.stats.wins, "W \xB7 ", game.stats.losses, "L"))), game.quests && game.quests.length > 0 && /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "#EF9F27", marginBottom: 8 } }, "Daily Quests"), game.quests.map((q, qi) => /* @__PURE__ */ React.createElement("div", { key: qi, style: { marginBottom: qi < game.quests.length - 1 ? 10 : 0 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, fontWeight: 500, color: q.claimed ? "#555" : "#e8e6df", textDecoration: q.claimed ? "line-through" : "none" } }, q.desc), q.claimed ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#1D9E75" } }, "\u2713 Done") : q.progress >= q.target ? /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("gold"), fontSize: 9, padding: "3px 8px" }, onClick: () => claimQuest(qi) }, "+" + q.reward + " \u2B21") : /* @__PURE__ */ React.createElement("span", { style: { fontSize: 9, color: "#777" } }, q.progress, "/", q.target)), /* @__PURE__ */ React.createElement("div", { style: { height: 4, borderRadius: 2, background: "#2c2c30" } }, /* @__PURE__ */ React.createElement("div", { style: { height: 4, borderRadius: 2, background: q.claimed ? "#555" : q.progress >= q.target ? "#1D9E75" : "#7F77DD", width: Math.min(100, q.progress / q.target * 100) + "%" } }))))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8 } }, /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), flex: 1 }, onClick: startBattle }, "Battle AI"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("gold"), flex: 1 }, onClick: () => setScreen("packs") }, "Open Packs")), user && /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), fontSize: 11, marginTop: 4 }, onClick: handleLogout }, "Log Out"));
     };
     const PackScreen = () => /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600 } }, "Pack Shop"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#777" } }, "Coins: ", /* @__PURE__ */ React.createElement("span", { style: { color: "#EF9F27", fontWeight: 600 } }, game.coins)), !packCards ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { ...S.card, textAlign: "center", padding: "32px 16px" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 100, height: 130, margin: "0 auto", borderRadius: 12, border: "2px solid #7F77DD", background: "#26215C", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("div", { style: { width: 36, height: 36, borderRadius: "50%", border: "2px solid #7F77DD", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: "#7F77DD" } }, "?"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, fontWeight: 600, color: "#7F77DD" } }, "5 Cards")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 500, marginTop: 12 } }, "Standard Pack"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "1 guaranteed Rare+")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("gold"), flex: 1 }, onClick: () => handleOpenPack(false) }, "100 coins"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("primary"), flex: 1 }, onClick: () => handleOpenPack(true) }, "Premium \xB7 200"))) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 500, textAlign: "center" } }, "Tap to reveal!"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", padding: "8px 0" } }, packCards.map((card, i) => {
       const rev = revealedCards.includes(i);
@@ -906,7 +1082,7 @@ var CardGameModule = (() => {
             setAtk(null);
           }
         }, style: { cursor: canT ? "crosshair" : "default" } }, /* @__PURE__ */ React.createElement(MiniCard, { cardDef: def, battleCard: bc }));
-      })), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontSize: 10, color: "#777" } }, "Turn ", battle.turn, " \xB7 ", over ? battle.phase === "won" ? "Victory!" : "Defeat" : battle.isPlayerTurn ? "Your turn" : "AI..."), battle.turn <= 2 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontSize: 9, color: "#555" } }, "\u2B21 = mana cost \xB7 \u2694 = attack \xB7 \u2665 = health \xB7 Tap a card to play or select"), /* @__PURE__ */ React.createElement("div", { style: { minHeight: 80, padding: "6px 4px", borderRadius: 8, background: "rgba(127,119,221,.08)", display: "flex", gap: 4, alignItems: "center", justifyContent: "center", flexWrap: "wrap" } }, battle.playerBoard.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "Empty") : battle.playerBoard.map((bc, i) => {
+      })), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontSize: 10, color: "#777" } }, "Turn ", battle.turn, " \xB7 ", over ? battle.phase === "won" ? "Victory!" : "Defeat" : battle.isPlayerTurn ? "Your turn" : "AI..."), battle.turn <= 3 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontSize: 9, color: "#555", padding: "2px 8px", background: "#2c2c30", borderRadius: 6, margin: "0 20px" } }, "\u2B21 = mana \xB7 \u2694 = attack \xB7 \u2665 = health", /* @__PURE__ */ React.createElement("br", null), `Tap your card \u2192 tap enemy card OR tap "Attack Face" to damage the AI's HP`), /* @__PURE__ */ React.createElement("div", { style: { minHeight: 80, padding: "6px 4px", borderRadius: 8, background: "rgba(127,119,221,.08)", display: "flex", gap: 4, alignItems: "center", justifyContent: "center", flexWrap: "wrap" } }, battle.playerBoard.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777" } }, "Empty") : battle.playerBoard.map((bc, i) => {
         const def = ALL_CARDS.find((c) => c.id === bc.id) || bc;
         return /* @__PURE__ */ React.createElement("div", { key: bc.uid, onClick: () => {
           if (battle.isPlayerTurn && !over) setAtk(atk === i ? null : i);
@@ -914,13 +1090,13 @@ var CardGameModule = (() => {
       })), atk !== null && (() => {
         const sel = battle.playerBoard[atk];
         const canA = sel && !sel.hasAttacked && sel.canAttack && !sel.justPlayed;
-        return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, canA && /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("danger"), fontSize: 11, padding: "6px 12px", flex: 1 }, onClick: () => {
+        return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, canA && /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("danger"), fontSize: 13, padding: "10px 16px", flex: 2, fontWeight: 700 }, onClick: () => {
           attackWithCard(atk, -1);
           setAtk(null);
-        } }, "Attack Face"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("gold"), fontSize: 11, padding: "6px 12px", flex: 1 }, onClick: () => {
+        } }, "\u2694 Attack Face"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("gold"), fontSize: 11, padding: "8px 12px", flex: 1 }, onClick: () => {
           recallCard(atk);
           setAtk(null);
-        } }, "Recall"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), fontSize: 11, padding: "6px 12px" }, onClick: () => setAtk(null) }, "Cancel"));
+        } }, "Recall"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), fontSize: 11, padding: "8px 12px" }, onClick: () => setAtk(null) }, "\u2715"));
       })(), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { color: "#E24B4A", fontSize: 10 } }, "HP"), /* @__PURE__ */ React.createElement("div", { style: { width: 60, height: 6, borderRadius: 3, background: "#2c2c30" } }, /* @__PURE__ */ React.createElement("div", { style: { height: 6, borderRadius: 3, background: "#E24B4A", width: battle.playerHp / STARTING_HP * 100 + "%" } })), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, fontWeight: 600 } }, battle.playerHp)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 2 } }, Array.from({ length: battle.playerMaxMana }, (_, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { width: 10, height: 10, borderRadius: "50%", border: "1px solid #378ADD", background: i < battle.playerMana ? "#378ADD" : "transparent" } }))), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: "#777" } }, "Deck: ", battle.playerDeck.length)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, overflowX: "auto", padding: "4px 0", minHeight: 92 } }, battle.playerHand.map((card, i) => {
         const def = ALL_CARDS.find((c) => c.id === card.id) || card;
         const canP = card.cost <= battle.playerMana && battle.isPlayerTurn && !over && battle.playerBoard.length < MAX_BOARD;
@@ -944,6 +1120,30 @@ var CardGameModule = (() => {
     const [settingsNewUsername, setSettingsNewUsername] = (0, import_react.useState)("");
     const [settingsNewPassword, setSettingsNewPassword] = (0, import_react.useState)("");
     const [deleteConfirm, setDeleteConfirm] = (0, import_react.useState)(false);
+    const CraftScreen = () => {
+      const [cf, setCf] = (0, import_react.useState)("all");
+      const owned = new Set(game.collection);
+      const filtered = ALL_CARDS.filter((c) => (cf === "all" || c.rarity === cf) && (cf === "all" ? true : true)).sort((a, b) => a.cost - b.cost);
+      return /* @__PURE__*/ React.createElement("div", { style: S.content },
+        /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+          /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600 } }, "Craft Cards"),
+          /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#EF9F27", fontWeight: 600 } }, "\u2B21 ", game.coins)),
+        /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#777", marginBottom: 4 } }, "Spend coins to add cards to your collection. Owned cards shown with \u2713"),
+        /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, flexWrap: "wrap" } },
+          ["all", "common", "rare", "epic", "legendary"].map((f) =>
+            /* @__PURE__ */ React.createElement("button", { key: f, onClick: () => setCf(f), style: { ...S.badge(f === "all" ? "common" : f), cursor: "pointer", border: "none", opacity: cf === f ? 1 : 0.5 } }, f === "all" ? "All" : RARITIES[f].label))),
+        /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(90px,1fr))", gap: 8 } },
+          filtered.map((c) => {
+            const has = owned.has(c.id);
+            const cost = CRAFT_COSTS[c.rarity];
+            return /* @__PURE__ */ React.createElement("div", { key: c.id, style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 4 } },
+              /* @__PURE__ */ React.createElement(MiniCard, { cardDef: c, selected: has }),
+              has
+                ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9, color: "#1D9E75", fontWeight: 600 } }, "\u2713 Owned")
+                : /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(game.coins >= cost ? "gold" : void 0), fontSize: 9, padding: "4px 8px", opacity: game.coins >= cost ? 1 : 0.5 }, onClick: () => craftCard(c.id) }, "\u2B21 ", cost));
+          })),
+        filtered.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: 24, fontSize: 13, color: "#777" } }, "No cards"));
+    };
     const SettingsScreen = () => {
       if (!user) return /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", padding: "40px 0" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600, marginBottom: 8 } }, "Settings"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#777", marginBottom: 16 } }, "Log in to access account settings"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, justifyContent: "center" } }, /* @__PURE__ */ React.createElement("button", { style: S.btn("primary"), onClick: () => setAuthScreen("login") }, "Log In"), /* @__PURE__ */ React.createElement("button", { style: S.btn(), onClick: () => setAuthScreen("register") }, "Sign Up"))));
       return /* @__PURE__ */ React.createElement("div", { style: S.content }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 600 } }, "Settings"), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "#AFA9EC", marginBottom: 8 } }, "Account Info"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777" } }, "Email"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, marginBottom: 8 } }, user.email || "Google account"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777" } }, "Username"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, marginBottom: 8 } }, username), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#777" } }, "User ID"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: "#555", wordBreak: "break-all" } }, user.uid)), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "#AFA9EC", marginBottom: 8 } }, "Change Username"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement("input", { style: { ...S.input, flex: 1 }, placeholder: "New username", value: settingsNewUsername, onChange: (e) => setSettingsNewUsername(e.target.value) }), /* @__PURE__ */ React.createElement("button", { style: S.btn("primary"), onClick: () => {
@@ -960,9 +1160,9 @@ var CardGameModule = (() => {
         }
       } }, "Reset Local Data")), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), width: "100%" }, onClick: handleLogout }, "Log Out"), /* @__PURE__ */ React.createElement("div", { style: S.card }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "#E24B4A", marginBottom: 8 } }, "Danger Zone"), !deleteConfirm ? /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("danger"), width: "100%", fontSize: 11 }, onClick: () => setDeleteConfirm(true) }, "Delete Account") : /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#F09595", marginBottom: 8 } }, "This will permanently delete your account, username, friends, and all cloud data. This cannot be undone."), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement("button", { style: { ...S.btn("danger"), flex: 1, fontSize: 11 }, onClick: handleDeleteAccount }, "Yes, Delete Forever"), /* @__PURE__ */ React.createElement("button", { style: { ...S.btn(), flex: 1, fontSize: 11 }, onClick: () => setDeleteConfirm(false) }, "Cancel")))), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", fontSize: 10, color: "#555", marginTop: 8 } }, "Deck v", VERSION));
     };
-    const navItems = [{ id: "home", label: "Home", icon: "\u25C9" }, { id: "packs", label: "Packs", icon: "\u25C6" }, { id: "collection", label: "Cards", icon: "\u25C7" }, { id: "decks", label: "Decks", icon: "\u2630" }, { id: "social", label: "Social", icon: "\u25CE" }, { id: "settings", label: "Settings", icon: "\u2699" }];
+    const navItems = [{ id: "home", label: "Home", icon: "\u25C9" }, { id: "packs", label: "Packs", icon: "\u25C6" }, { id: "craft", label: "Craft", icon: "\u2726" }, { id: "collection", label: "Cards", icon: "\u25C7" }, { id: "decks", label: "Decks", icon: "\u2630" }, { id: "social", label: "Social", icon: "\u25CE" }, { id: "settings", label: "Settings", icon: "\u2699" }];
     if (authScreen) return /* @__PURE__ */ React.createElement("div", { style: S.app }, /* @__PURE__ */ React.createElement("style", null, `@keyframes slideDown{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}`), /* @__PURE__ */ React.createElement(Toasts, null), AuthScreenUI());
-    return /* @__PURE__ */ React.createElement("div", { style: S.app }, /* @__PURE__ */ React.createElement("style", null, `@keyframes slideDown{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}*{box-sizing:border-box}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:rgba(127,119,221,.3);border-radius:2px}`), /* @__PURE__ */ React.createElement(Toasts, null), screen === "home" && HomeScreen(), screen === "packs" && PackScreen(), screen === "collection" && /* @__PURE__ */ React.createElement(CollectionScreen, null), screen === "decks" && DecksScreen(), screen === "deckbuilder" && /* @__PURE__ */ React.createElement(DeckBuilder, null), screen === "battle" && /* @__PURE__ */ React.createElement(BattleScreen, null), screen === "social" && SocialScreen(), screen === "settings" && /* @__PURE__ */ React.createElement(SettingsScreen, null), screen !== "deckbuilder" && screen !== "battle" && /* @__PURE__ */ React.createElement("div", { style: S.nav }, navItems.map((n) => /* @__PURE__ */ React.createElement("div", { key: n.id, style: S.navItem(screen === n.id), onClick: () => setScreen(n.id) }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16 } }, n.icon), /* @__PURE__ */ React.createElement("span", null, n.label))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, fontSize: 10, color: "#EF9F27", fontWeight: 500 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14 } }, "\u2B21"), /* @__PURE__ */ React.createElement("span", null, game.coins.toLocaleString()))));
+    return /* @__PURE__ */ React.createElement("div", { style: S.app }, /* @__PURE__ */ React.createElement("style", null, `@keyframes slideDown{from{transform:translateY(-20px);opacity:0}to{transform:translateY(0);opacity:1}}*{box-sizing:border-box}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:rgba(127,119,221,.3);border-radius:2px}`), /* @__PURE__ */ React.createElement(Toasts, null), screen === "home" && HomeScreen(), screen === "packs" && PackScreen(), screen === "collection" && /* @__PURE__ */ React.createElement(CollectionScreen, null), screen === "craft" && /* @__PURE__ */ React.createElement(CraftScreen, null), screen === "decks" && DecksScreen(), screen === "deckbuilder" && /* @__PURE__ */ React.createElement(DeckBuilder, null), screen === "battle" && /* @__PURE__ */ React.createElement(BattleScreen, null), screen === "social" && SocialScreen(), screen === "settings" && /* @__PURE__ */ React.createElement(SettingsScreen, null), screen !== "deckbuilder" && screen !== "battle" && /* @__PURE__ */ React.createElement("div", { style: S.nav }, navItems.map((n) => /* @__PURE__ */ React.createElement("div", { key: n.id, style: S.navItem(screen === n.id), onClick: () => setScreen(n.id) }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16 } }, n.icon), /* @__PURE__ */ React.createElement("span", null, n.label))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, fontSize: 10, color: "#EF9F27", fontWeight: 500 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14 } }, "\u2B21"), /* @__PURE__ */ React.createElement("span", null, game.coins.toLocaleString()))));
   }
   return __toCommonJS(game_exports);
 })();
